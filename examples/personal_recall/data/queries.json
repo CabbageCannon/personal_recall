@@ -131,7 +131,7 @@
   },
   {
     "id": "q012",
-    "question": "我是什么时候和室友聊到 Tailscale 的？",
+    "question": "我第一次是什么时候和室友聊到 Tailscale 的？",
     "expected_answer": "2025年3月9日",
     "relevant_evidence": [
       "[2025-03-09 22:03] 室友: 你不是想在宿舍电脑上连实验室那台机器吗",
@@ -197,7 +197,7 @@
   },
   {
     "id": "q018",
-    "question": "室友之前连家里的存储设备时，用的是什么工具？",
+    "question": "2025年室友说他连家里的 NAS 时用的是什么工具？",
     "expected_answer": "Tailscale",
     "relevant_evidence": [
       "[2025-03-09 22:05] 室友: 你要不装个 Tailscale",
