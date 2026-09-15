@@ -97,3 +97,19 @@ class ChatHistory:
         """
 
         return [_msg.msg for _msg in self._msgs]
+
+    @classmethod
+    def from_messages(cls,messages:list[ChatMessage])->"ChatHistory":
+        if not messages:
+            raise ValueError("加载的messages不能为空")
+        first_message=messages[0]
+        
+        chat_id=first_message.chat_id
+        brain_id=first_message.brain_id
+        history=cls(
+            chat_id=chat_id,
+            brain_id=brain_id
+        )
+        # 重新复制一份messages，而不是与传进来的参数共享
+        history._msgs=list(messages)
+        return history

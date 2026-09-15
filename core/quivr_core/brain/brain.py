@@ -65,6 +65,7 @@ async def process_files(
     for file in await storage.get_files():
         try:
             if file.file_extension:
+                # 拿到对应文件类型的处理器
                 processor_cls = get_processor_class(file.file_extension)
                 logger.debug(f"processing {file} using class {processor_cls.__name__}")
                 processor = processor_cls(**processor_kwargs)
@@ -195,8 +196,8 @@ class Brain:
             )
         else:
             raise ValueError("Unsupported vectordb")
-
-        return cls(
+        
+        brain=cls(
             id=bserialized.id,
             name=bserialized.name,
             embedder=embedder,
@@ -204,6 +205,19 @@ class Brain:
             storage=storage,
             vector_db=vector_db,
         )
+        
+        # chat_history为空，直接返回
+        if not bserialized.chat_history:
+            return brain
+        else:
+            brain.default_chat=ChatHistory.from_messages(bserialized.chat_history)
+            chat_id=bserialized.chat_history[0].chat_id
+            brain._chats={chat_id:brain.default_chat}
+            brain.chat_id=chat_id
+            return brain
+            
+
+
 
     async def save(self, folder_path: str | Path):
         """
@@ -499,7 +513,7 @@ class Brain:
         question: str,
         run_id: UUID,
         system_prompt: str | None = None,
-        retrieval_config: RetrievalConfig | None = None,
+        retrieval_config: RetrievalConfig | None = None, # 整个RAG run的配置对象
         rag_pipeline: Type[Union[QuivrQARAG, QuivrQARAGLangGraph]] | None = None,
         list_files: list[QuivrKnowledge] | None = None,
         chat_history: ChatHistory | None = None,
