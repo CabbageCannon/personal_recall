@@ -4,11 +4,12 @@ import re
 from enum import Enum
 from typing import Any, Dict, Hashable, List, Optional, Type, Union
 from uuid import UUID
+from proto import Field
 
 from langchain_core.prompts.base import BasePromptTemplate
 from langchain_core.tools import BaseTool
 from langgraph.graph import END, START
-from pydantic import BaseModel
+from pydantic import BaseModel,Field
 from rapidfuzz import fuzz, process
 
 from quivr_core.base_config import QuivrBaseConfig
@@ -311,7 +312,7 @@ class LLMEndpointConfig(QuivrBaseConfig):
     tokenizer_hub: str | None = None
     llm_base_url: str | None = None
     env_variable_name: str | None = None
-    llm_api_key: str | None = None
+    llm_api_key: str | None = Field(default=None,exclude=True) # exclude设置为True，使序列化时不保存当前值
     max_context_tokens: int = 20000
     max_output_tokens: int = 4096
     temperature: float = 0.3
