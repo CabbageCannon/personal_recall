@@ -91,5 +91,191 @@
     "relevant_evidence": [],
     "category": "unanswerable",
     "answerable": false
+  },
+  {
+    "id": "q009",
+    "question": "国庆那次我和小王约了几点去吃寿喜烧？",
+    "expected_answer": "晚上六点",
+    "relevant_evidence": [
+      "[2024-10-03 17:43] 我: 上次学校东门那家寿喜烧怎么样？",
+      "[2024-10-03 17:44] 小王: 可以啊，我觉得那家牛肉还行",
+      "[2024-10-03 17:45] 我: 那六点过去？",
+      "[2024-10-03 17:46] 小王: 六点可以，晚一点估计又要排队"
+    ],
+    "category": "exact_fact",
+    "answerable": true
+  },
+  {
+    "id": "q010",
+    "question": "之前有人给我推荐过一个除了数据库之外还提供更多功能的平台，是哪个？",
+    "expected_answer": "Supabase",
+    "relevant_evidence": [
+      "[2025-07-21 15:08] 同学A: 数据库呢，还用 Supabase？",
+      "[2025-07-21 15:10] 同学A: 那你可以看看 Neon，也是 PostgreSQL",
+      "[2025-07-21 15:11] 我: 跟 Supabase 比有什么区别？",
+      "[2025-07-21 15:12] 同学A: Neon 更偏托管数据库本身，Supabase 给你的东西更多一点"
+    ],
+    "category": "semantic_recall",
+    "answerable": true
+  },
+  {
+    "id": "q011",
+    "question": "是谁建议我这个新项目试试 Neon？",
+    "expected_answer": "同学A",
+    "relevant_evidence": [
+      "[2025-07-21 15:09] 我: 这个项目还没定，想换一个试试",
+      "[2025-07-21 15:10] 同学A: 那你可以看看 Neon，也是 PostgreSQL"
+    ],
+    "category": "person_recall",
+    "answerable": true
+  },
+  {
+    "id": "q012",
+    "question": "我是什么时候和室友聊到 Tailscale 的？",
+    "expected_answer": "2025年3月9日",
+    "relevant_evidence": [
+      "[2025-03-09 22:03] 室友: 你不是想在宿舍电脑上连实验室那台机器吗",
+      "[2025-03-09 22:05] 室友: 你要不装个 Tailscale"
+    ],
+    "category": "time_recall",
+    "answerable": true
+  },
+  {
+    "id": "q013",
+    "question": "为什么我和张三最后没有定在5月3日去长沙？",
+    "expected_answer": "因为我5月3日下午还有作业要交，所以那天来不及",
+    "relevant_evidence": [
+      "[2024-05-02 18:28] 张三: 长沙吧，高铁过去也不算远",
+      "[2024-05-02 18:29] 我: 我三号下午还有个作业要交",
+      "[2024-05-02 18:30] 张三: 那三号肯定来不及",
+      "[2024-05-02 18:31] 我: 四号呢？",
+      "[2024-05-02 18:32] 张三: 四号可以，我那天没事"
+    ],
+    "category": "cross_message",
+    "answerable": true
+  },
+  {
+    "id": "q014",
+    "question": "谁在聊天里提到过 Cloudflare Tunnel？",
+    "expected_answer": "室友",
+    "relevant_evidence": [
+      "[2025-03-09 22:13] 室友: 实在不行你再看看 Cloudflare Tunnel，不过那个场景不太一样"
+    ],
+    "category": "exact_keyword",
+    "answerable": true
+  },
+  {
+    "id": "q015",
+    "question": "之前有人说有个服务更偏单纯托管 PostgreSQL，不像 Supabase 给那么多东西，那个服务叫什么？",
+    "expected_answer": "Neon",
+    "relevant_evidence": [
+      "[2025-07-21 15:10] 同学A: 那你可以看看 Neon，也是 PostgreSQL",
+      "[2025-07-21 15:11] 我: 跟 Supabase 比有什么区别？",
+      "[2025-07-21 15:12] 同学A: Neon 更偏托管数据库本身，Supabase 给你的东西更多一点"
+    ],
+    "category": "conversational",
+    "answerable": true
+  },
+  {
+    "id": "q016",
+    "question": "五一的时候张三最后和我决定去广州了吗？",
+    "expected_answer": null,
+    "relevant_evidence": [],
+    "category": "unanswerable",
+    "answerable": false
+  },
+  {
+    "id": "q017",
+    "question": "2025年那个项目的前端我准备部署到哪里？",
+    "expected_answer": "Cloudflare Pages",
+    "relevant_evidence": [
+      "[2025-07-21 15:06] 同学A: 你那个小项目最后部署哪了？",
+      "[2025-07-21 15:07] 我: 后端还是 Render，前端我准备放 Cloudflare Pages"
+    ],
+    "category": "exact_fact",
+    "answerable": true
+  },
+  {
+    "id": "q018",
+    "question": "室友之前连家里的存储设备时，用的是什么工具？",
+    "expected_answer": "Tailscale",
+    "relevant_evidence": [
+      "[2025-03-09 22:05] 室友: 你要不装个 Tailscale",
+      "[2025-03-09 22:07] 室友: 不麻烦，几台机器登录之后基本就能互相访问了",
+      "[2025-03-09 22:10] 室友: 我之前连家里的 NAS 也是这么弄的"
+    ],
+    "category": "semantic_recall",
+    "answerable": true
+  },
+  {
+    "id": "q019",
+    "question": "是谁提醒我不要等到五月才开始投实习？",
+    "expected_answer": "学长",
+    "relevant_evidence": [
+      "[2026-03-18 20:49] 学长: 对，而且简历最好这个月底之前整理好",
+      "[2026-03-18 20:51] 学长: 对，四月开始就可以陆续投了，别等到五月"
+    ],
+    "category": "person_recall",
+    "answerable": true
+  },
+  {
+    "id": "q020",
+    "question": "这些聊天记录里，我最早是什么时候开始聊到 Supabase 的？",
+    "expected_answer": "2024年3月16日",
+    "relevant_evidence": [
+      "[2024-03-16 20:12] 我: 还没，后端我放 Render 了，但数据库还在看",
+      "[2024-03-16 20:13] 小王: 可以试试 Supabase",
+      "[2024-03-16 20:14] 我: 我之前好像看到过，它是不是直接能用 PostgreSQL"
+    ],
+    "category": "time_recall",
+    "answerable": true
+  },
+  {
+    "id": "q021",
+    "question": "2025年我和同学A聊的那个小项目，前端、后端和数据库分别准备怎么部署？",
+    "expected_answer": "前端准备放 Cloudflare Pages，后端继续用 Render，数据库准备尝试 Neon",
+    "relevant_evidence": [
+      "[2025-07-21 15:06] 同学A: 你那个小项目最后部署哪了？",
+      "[2025-07-21 15:07] 我: 后端还是 Render，前端我准备放 Cloudflare Pages",
+      "[2025-07-21 15:08] 同学A: 数据库呢，还用 Supabase？",
+      "[2025-07-21 15:09] 我: 这个项目还没定，想换一个试试",
+      "[2025-07-21 15:10] 同学A: 那你可以看看 Neon，也是 PostgreSQL",
+      "[2025-07-21 15:14] 我: 那我这个项目可能 Neon 就够了",
+      "[2025-07-21 15:17] 我: 好，我今晚把 Render 和 Neon 接起来试试"
+    ],
+    "category": "cross_message",
+    "answerable": true
+  },
+  {
+    "id": "q022",
+    "question": "Cloudflare Pages 是我和谁聊天时提到的？",
+    "expected_answer": "同学A",
+    "relevant_evidence": [
+      "[2025-07-21 15:06] 同学A: 你那个小项目最后部署哪了？",
+      "[2025-07-21 15:07] 我: 后端还是 Render，前端我准备放 Cloudflare Pages"
+    ],
+    "category": "exact_keyword",
+    "answerable": true
+  },
+  {
+    "id": "q023",
+    "question": "我那个只是拿来做 demo 的项目，后来准备拿哪个数据库和 Render 接起来试试？",
+    "expected_answer": "Neon",
+    "relevant_evidence": [
+      "[2025-07-21 15:10] 同学A: 那你可以看看 Neon，也是 PostgreSQL",
+      "[2025-07-21 15:14] 我: 那我这个项目可能 Neon 就够了",
+      "[2025-07-21 15:15] 同学A: 对，而且你只是做 demo，别一开始搞太复杂",
+      "[2025-07-21 15:17] 我: 好，我今晚把 Render 和 Neon 接起来试试"
+    ],
+    "category": "conversational",
+    "answerable": true
+  },
+  {
+    "id": "q024",
+    "question": "我后来成功把 Neon 数据库部署上线了吗？",
+    "expected_answer": null,
+    "relevant_evidence": [],
+    "category": "unanswerable",
+    "answerable": false
   }
 ]
