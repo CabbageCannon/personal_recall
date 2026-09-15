@@ -1,0 +1,95 @@
+[
+  {
+    "id": "q001",
+    "question": "张三五一的时候提议去哪里玩？",
+    "expected_answer": "长沙",
+    "relevant_evidence": [
+      "[2024-05-02 18:27] 我: 想去哪？",
+      "[2024-05-02 18:28] 张三: 长沙吧，高铁过去也不算远"
+    ],
+    "category": "exact_fact",
+    "answerable": true
+  },
+  {
+    "id": "q002",
+    "question": "之前有人建议我用一个能让不同网络的几台机器互相访问的工具，是哪个？",
+    "expected_answer": "Tailscale",
+    "relevant_evidence": [
+      "[2025-03-09 22:03] 室友: 你不是想在宿舍电脑上连实验室那台机器吗",
+      "[2025-03-09 22:04] 我: 对，但是两个网络不一样，直接 ssh 过去连不上",
+      "[2025-03-09 22:05] 室友: 你要不装个 Tailscale",
+      "[2025-03-09 22:07] 室友: 不麻烦，几台机器登录之后基本就能互相访问了"
+    ],
+    "category": "semantic_recall",
+    "answerable": true
+  },
+  {
+    "id": "q003",
+    "question": "是谁最早建议我试试 Supabase？",
+    "expected_answer": "小王",
+    "relevant_evidence": [
+      "[2024-03-16 20:12] 我: 还没，后端我放 Render 了，但数据库还在看",
+      "[2024-03-16 20:13] 小王: 可以试试 Supabase"
+    ],
+    "category": "person_recall",
+    "answerable": true
+  },
+  {
+    "id": "q004",
+    "question": "学长建议我什么时候之前把简历整理好？",
+    "expected_answer": "2026年3月底之前",
+    "relevant_evidence": [
+      "[2026-03-18 20:49] 学长: 对，而且简历最好这个月底之前整理好",
+      "[2026-03-18 20:50] 我: 三月底之前对吧？",
+      "[2026-03-18 20:51] 学长: 对，四月开始就可以陆续投了，别等到五月"
+    ],
+    "category": "time_recall",
+    "answerable": true
+  },
+  {
+    "id": "q005",
+    "question": "我和张三最后决定哪天去长沙？",
+    "expected_answer": "2024年5月4日",
+    "relevant_evidence": [
+      "[2024-05-02 18:29] 我: 我三号下午还有个作业要交",
+      "[2024-05-02 18:30] 张三: 那三号肯定来不及",
+      "[2024-05-02 18:31] 我: 四号呢？",
+      "[2024-05-02 18:32] 张三: 四号可以，我那天没事",
+      "[2024-05-02 18:34] 我: 那就四号早上过去？",
+      "[2024-05-02 18:36] 我: 好，那就定四号"
+    ],
+    "category": "cross_message",
+    "answerable": true
+  },
+  {
+    "id": "q006",
+    "question": "谁跟我聊过 Neon？",
+    "expected_answer": "同学A",
+    "relevant_evidence": [
+      "[2025-07-21 15:06] 同学A: 你那个小项目最后部署哪了？",
+      "[2025-07-21 15:10] 同学A: 那你可以看看 Neon，也是 PostgreSQL"
+    ],
+    "category": "exact_keyword",
+    "answerable": true
+  },
+  {
+    "id": "q007",
+    "question": "之前那个学长说，如果我想看看别人面试实际被问了什么，可以去哪里看？",
+    "expected_answer": "牛客",
+    "relevant_evidence": [
+      "[2026-03-18 20:44] 学长: 可以多看看牛客上的实习招聘和面经",
+      "[2026-03-18 20:45] 我: 我之前主要在 Boss 上搜，牛客看得比较少",
+      "[2026-03-18 20:46] 学长: Boss 找岗位方便，牛客更适合看看别人实际被问了什么"
+    ],
+    "category": "conversational",
+    "answerable": true
+  },
+  {
+    "id": "q008",
+    "question": "前年国庆我和小王去海底捞了吗？",
+    "expected_answer": null,
+    "relevant_evidence": [],
+    "category": "unanswerable",
+    "answerable": false
+  }
+]
