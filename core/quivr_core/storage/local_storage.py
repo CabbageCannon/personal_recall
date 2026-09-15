@@ -8,7 +8,9 @@ from quivr_core.brain.serialization import LocalStorageConfig, TransparentStorag
 from quivr_core.files.file import QuivrFile
 from quivr_core.storage.storage_base import StorageBase
 
+# 本项目只有两种store:(LocalStorage和TransparentStore)
 
+# 存储在磁盘上
 class LocalStorage(StorageBase):
     """
     LocalStorage is a concrete implementation of the `StorageBase` class that
@@ -71,6 +73,7 @@ class LocalStorage(StorageBase):
             FileExistsError: If a file with the same SHA-1 hash already exists
                              and `exists_ok` is set to `False`.
         """
+        # 构造目标路径
         dst_path = os.path.join(
             self.dir_path, str(file.brain_id), f"{file.id}{file.file_extension}"
         )
@@ -83,6 +86,7 @@ class LocalStorage(StorageBase):
         else:
             os.symlink(file.path, dst_path)
 
+        # 这里修改了文件路径，也就是说，存入LocalStore后，文件路径不再是原来那个，而是现在新的这份
         file.path = Path(dst_path)
         self.files.append(file)
         self.hashes.add(file.file_sha1)
@@ -109,6 +113,7 @@ class LocalStorage(StorageBase):
         """
         raise NotImplementedError
 
+    # 从本地文件夹加载成一个localStore，但目前加载后未更新hashes，有待后续完善
     @classmethod
     def load(cls, config: LocalStorageConfig) -> Self:
         """
@@ -126,9 +131,11 @@ class LocalStorage(StorageBase):
         """
         tstorage = cls(dir_path=config.storage_path)
         tstorage.files = [QuivrFile.deserialize(f) for f in config.files.values()]
+        tstorage.hashes = {file.file_sha1 for file in tstorage.files}
         return tstorage
 
 
+# 几乎透明的文件注册表
 class TransparentStorage(StorageBase):
     """Transparent Storage."""
 
@@ -143,6 +150,7 @@ class TransparentStorage(StorageBase):
     def nb_files(self) -> int:
         return len(self.id_files)
 
+    # 不支持删除文件
     async def remove_file(self, file_id: UUID) -> None:
         raise NotImplementedError
 
