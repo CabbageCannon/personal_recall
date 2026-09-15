@@ -503,7 +503,7 @@ class QuivrQARAGLangGraph:
         if "tasks" in state and state["tasks"]:
             tasks = state["tasks"]
         else:
-            tasks = UserTasks(state["original_query"])
+            tasks = UserTasks([state["original_query"]])
 
         # Prepare the async tasks for all user tsks
         async_jobs = []
@@ -614,7 +614,7 @@ class QuivrQARAGLangGraph:
                 tool = tasks(task_id).tool
                 tool_wrapper = LLMToolFactory.create_tool(tool, {})
                 formatted_input = tool_wrapper.format_input(tasks(task_id).definition)
-                async_jobs.append((tool_wrapper.tool.ainvoke(formatted_input), task_id))
+                async_jobs.append((tool_wrapper.tool.ainvoke(formatted_input), task_id,tool_wrapper.format_output))
 
         # Gather all the responses asynchronously
         responses = (
@@ -623,9 +623,10 @@ class QuivrQARAGLangGraph:
             else []
         )
         task_ids = [jobs[1] for jobs in async_jobs] if async_jobs else []
+        formatted_output_funcs=[jobs[2] for jobs in async_jobs] if async_jobs else []
 
-        for response, task_id in zip(responses, task_ids, strict=False):
-            _docs = tool_wrapper.format_output(response) # 工具的输出全部转换成统一的doc对象
+        for response, task_id,formatted_output_func in zip(responses, task_ids,formatted_output_funcs, strict=False):
+            _docs = formatted_output_func(response) # 工具的输出全部转换成统一的doc对象
             _docs = self.filter_chunks_by_relevance(_docs)
             tasks.set_docs(task_id, _docs)
 
