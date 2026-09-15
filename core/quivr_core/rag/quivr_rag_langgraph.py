@@ -222,6 +222,8 @@ class UserTasks:
 
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], add_messages]
+    # 用户原始的问题
+    original_query:str
     reasoning: List[str]
     chat_history: ChatHistory
     files: str
@@ -281,6 +283,7 @@ class QuivrQARAGLangGraph:
         config = self.retrieval_config.reranker_config
 
         # Allow kwargs to override specific config values
+        # pop从dict中删除key并返回对应的value，如果没有就返回第二个参数
         supplier = kwargs.pop("supplier", config.supplier)
         model = kwargs.pop("model", config.model)
         top_n = kwargs.pop("top_n", config.top_n)
@@ -325,7 +328,7 @@ class QuivrQARAGLangGraph:
         """
 
         msg = custom_prompts[TemplatePromptName.SPLIT_PROMPT].format(
-            user_input=state["messages"][0].content,
+            user_input=state["original_query"],
         )
 
         response: SplittedInput
@@ -366,11 +369,12 @@ class QuivrQARAGLangGraph:
 
         return send_list
 
+    # 将问题分成指令和query
     def routing_split(self, state: AgentState):
         response: SplittedInput = self.invoke_structured_output(
             custom_prompts[TemplatePromptName.SPLIT_PROMPT].format(
                 chat_history=state["chat_history"].to_list(),
-                user_input=state["messages"][0].content,
+                user_input=state["original_query"],
             ),
             SplittedInput,
         )
@@ -457,25 +461,34 @@ class QuivrQARAGLangGraph:
         total_pairs = 0
         _chat_id = uuid4()
         _chat_history = ChatHistory(chat_id=_chat_id, brain_id=chat_history.brain_id)
-        for human_message, ai_message in reversed(list(chat_history.iter_pairs())):
+        selected_pairs=[]
+        # iter_pairs方法已经reverse过了
+        for human_message, ai_message in chat_history.iter_pairs():
             # TODO: replace with tiktoken
             message_tokens = self.llm_endpoint.count_tokens(
                 human_message.content
             ) + self.llm_endpoint.count_tokens(ai_message.content)
 
+            # 两层限制:(1)消息总tokens最多为llm_config.max_context_tokens(2)消息对数最多为retrieval_config.max_history
             if (
                 total_tokens + message_tokens
                 > self.retrieval_config.llm_config.max_context_tokens
                 or total_pairs >= self.retrieval_config.max_history
             ):
                 break
-            _chat_history.append(human_message)
-            _chat_history.append(ai_message)
+            selected_pairs.append(
+                (human_message,ai_message)
+            )
             total_tokens += message_tokens
             total_pairs += 1
-
+            
+        for human_message,ai_message in reversed(selected_pairs):
+            _chat_history.append(human_message)
+            _chat_history.append(ai_message)
+            
         return {**state, "chat_history": _chat_history}
 
+    # 重写问题：因为用户的问题很可能与上下文有关，这里需要将问题和历史对话结合才知道用户具体想问什么
     async def rewrite(self, state: AgentState) -> AgentState:
         """
         Transform the query to produce a better question.
@@ -490,7 +503,7 @@ class QuivrQARAGLangGraph:
         if "tasks" in state and state["tasks"]:
             tasks = state["tasks"]
         else:
-            tasks = UserTasks([state["messages"][0].content])
+            tasks = UserTasks(state["original_query"])
 
         # Prepare the async tasks for all user tsks
         async_jobs = []
@@ -541,6 +554,7 @@ class QuivrQARAGLangGraph:
 
         return filtered_chunks
 
+    # 用于判断当前检索出来的evidence是否足够回答用户问题，不够的话启动search tool
     async def tool_routing(self, state: AgentState):
         tasks = state["tasks"]
         if not tasks.has_tasks():
@@ -611,12 +625,13 @@ class QuivrQARAGLangGraph:
         task_ids = [jobs[1] for jobs in async_jobs] if async_jobs else []
 
         for response, task_id in zip(responses, task_ids, strict=False):
-            _docs = tool_wrapper.format_output(response)
+            _docs = tool_wrapper.format_output(response) # 工具的输出全部转换成统一的doc对象
             _docs = self.filter_chunks_by_relevance(_docs)
             tasks.set_docs(task_id, _docs)
 
         return {**state, "tasks": tasks}
-
+    
+    # 既包含向量检索也包含reranker
     async def retrieve(self, state: AgentState) -> AgentState:
         """
         Retrieve relevent chunks
@@ -648,6 +663,7 @@ class QuivrQARAGLangGraph:
         kwargs = {"top_n": self.retrieval_config.reranker_config.top_n}  # type: ignore
         reranker = self.get_reranker(**kwargs)
 
+        # 既包括retrieve也包括rerank
         compression_retriever = ContextualCompressionRetriever(
             base_compressor=reranker, base_retriever=base_retriever
         )
@@ -879,9 +895,11 @@ class QuivrQARAGLangGraph:
         while n > max_context_tokens * SECURITY_FACTOR:
             chat_history = inputs["chat_history"] if "chat_history" in inputs else []
 
+            # 如果token太多了，就删除一轮历史对话
             if len(chat_history) > 0:
                 inputs["chat_history"] = chat_history[2:]
             elif tasks:
+                # 如果对话历史删完了，就删docs，有先找docs的tokens数最多的task
                 longest_task_id = max(
                     task_token_counts.items(), key=lambda x: x[1]["total"]
                 )[0]
@@ -890,14 +908,17 @@ class QuivrQARAGLangGraph:
                 if task_token_counts[longest_task_id]["docs"]:
                     removed_tokens = task_token_counts[longest_task_id]["docs"].pop()
                     task_token_counts[longest_task_id]["total"] -= removed_tokens
+                    # 删除最后一个，因为这里docs是按rerank后排序的，这里最后一个就是最不相关的
                     tasks.set_docs(longest_task_id, tasks(longest_task_id).docs[:-1])
             else:
+                # 还不行就抛错
                 logging.warning(
                     f"Not enough context to reduce. The context length is {n} "
                     f"which is greater than the max context tokens of {max_context_tokens}"
                 )
                 break
 
+            # 每一次都重新构建context
             docs = tasks.docs if tasks else []
             inputs["context"] = combine_documents(docs)
 
@@ -923,8 +944,7 @@ class QuivrQARAGLangGraph:
     def generate_zendesk_rag(self, state: AgentState) -> AgentState:
         tasks = state["tasks"]
         docs: List[Document] = tasks.docs if tasks else []
-        messages = state["messages"]
-        user_task = messages[0].content
+        user_task = state["original_query"]
         prompt_template: BasePromptTemplate = custom_prompts[
             TemplatePromptName.ZENDESK_TEMPLATE_PROMPT
         ]
@@ -984,8 +1004,9 @@ class QuivrQARAGLangGraph:
         for msg in messages:
             if isinstance(msg, SystemMessage):
                 system_message = str(msg.content)
-            elif isinstance(msg, HumanMessage):
-                user_message = str(msg.content)
+        
+        user_message=state["original_query"]
+        user_task=state["original_query"]
 
         user_task = (
             user_message if user_message else (messages[0].content if messages else "")
@@ -1027,6 +1048,7 @@ class QuivrQARAGLangGraph:
         Returns:
             Callable[[Dict], Dict]: The langchain chain.
         """
+        # 懒初始化，第一次调用时初始化，之后复用
         if not self.graph:
             self.graph = self.create_graph()
 
@@ -1036,6 +1058,7 @@ class QuivrQARAGLangGraph:
         workflow = StateGraph(AgentState)
         self.final_nodes = []
 
+        # 真正添加Nodes和Edges
         self._build_workflow(workflow)
 
         return workflow.compile()
@@ -1089,9 +1112,11 @@ class QuivrQARAGLangGraph:
         messages = [("system", system_prompt)] if system_prompt else []
         messages.append(("user", question))
 
+        # 对conversational_qa_chain方法的调用区别:invoke是直接返回完整状态结果，astream_events是返回事件流，后者更关注过程
         async for event in conversational_qa_chain.astream_events(
             {
                 "messages": messages,
+                "original_query":question,
                 "chat_history": history,
                 "files": concat_list_files,
                 **input_kwargs,
@@ -1105,12 +1130,14 @@ class QuivrQARAGLangGraph:
         ):
             node_name = self._extract_node_name(event)
 
+            # 走到最后节点才拿docs，不在retrieve阶段拿是因为其之后还有一个reduce阶段可能会砍掉部分的doc，因此不能在这时候拿
             if self._is_final_node_with_docs(event):
                 tasks = event["data"]["output"]["tasks"]
                 docs = tasks.docs if tasks else []
 
             if self._is_final_node_and_chat_model_stream(event):
                 chunk = event["data"]["chunk"]
+                # 解析新来的chunk
                 rolling_message, new_content, previous_content = parse_chunk_response(
                     rolling_message,
                     chunk,
@@ -1208,8 +1235,7 @@ class QuivrQARAGLangGraph:
         Returns:
             Dictionary containing all inputs needed for RAG_ANSWER_PROMPT
         """
-        messages = state["messages"]
-        user_task = messages[0].content
+        user_task = state["original_query"]
         files = state["files"]
         prompt = self.retrieval_config.prompt
         # available_tools, _ = collect_tools(self.retrieval_config.workflow_config)
