@@ -1,0 +1,123 @@
+[
+  {
+    "query_id": "q001",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q002",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q003",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q004",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q005",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q006",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q007",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q008",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q009",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q010",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q011",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q012",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q013",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q014",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q015",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q016",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q017",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q018",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q019",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q020",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q021",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q022",
+    "label": "INVALID_QUERY",
+    "unsupported_claim": false,
+    "note": "Expanded corpus also contains a later Cloudflare Pages conversation with the roommate, so the original question no longer has a unique person answer."
+  },
+  {
+    "query_id": "q023",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q024",
+    "label": "PASS",
+    "unsupported_claim": false
+  }
+]

@@ -248,7 +248,7 @@
   },
   {
     "id": "q022",
-    "question": "Cloudflare Pages 是我和谁聊天时提到的？",
+    "question": "2025年7月，我是和谁聊天时提到准备把前端放到 Cloudflare Pages 的？",
     "expected_answer": "同学A",
     "relevant_evidence": [
       "[2025-07-21 15:06] 同学A: 你那个小项目最后部署哪了？",
