@@ -12,7 +12,7 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | 0 | Small-corpus baseline (unmodified Quivr Dense RAG) | ✅ done |
 | 0.5 | Recall Stress Corpus + Stress Baseline + dataset audit | ✅ done — baseline visibly fails, failure attributed to retrieval |
 | 1 | MemoryEvent / Source Adapter + conversation-aware chunking | ✅ done — kept: additive on top of the window control |
-| 2 | Retrieval trace / Evidence representation on structured memory | ⏸ |
+| 2 | Retrieval trace / Evidence representation on structured memory | ⏸ (reranking evaluated in round 2: negative, not adopted) |
 | 3 | Hybrid retrieval (BM25 + dense + RRF, reranker only if needed) | ⏸ |
 | 4 | Temporal retrieval | ⏸ |
 | 5 | Entity-aware recall (Person / Alias) | ⏸ |
@@ -358,3 +358,73 @@ generation slips — all their gold lines were retrieved.
 **Phase 2 A/B plan:** reference = A4 (session + k=10). Test session + k=50 + rerank→5 with the same
 36 queries; keep the reranker only if PASS/coverage improve over A4, and report its latency cost.
 A rerank step that cannot beat simply widening k must not be merged.
+
+---
+
+# Phase 2 — candidate widening + local cross-encoder re-rank: **NEGATIVE RESULT (not adopted)**
+
+Hypothesis (from the Phase 1 failure analysis): the decisive line sits at dense rank 20–50, so a
+re-ranker that selects 5–10 of 50 candidates should lift evidence coverage.
+
+Built (and kept — see "What was kept"): local re-ranking support in the framework, a
+`--rerank-model/--candidate-k` experiment knob, offline probe support, 13 new tests.
+Model: `BAAI/bge-reranker-base` (1.1 GB, local, CPU, ~25 pairs/s).
+
+## Measured (offline probes, real BGE + real cross-encoder, no API cost)
+
+Retrieval units = session chunks (101), candidate pool = dense top-50.
+
+| strategy | slots | Hit@k | avg coverage |
+|---|---|---|---|
+| flat dense top-5 (A2-equivalent) | 5 | 94.1 % | 67.2 % |
+| **re-rank 50 → keep 5** | 5 | 94.1 % | **67.2 %** (identical) |
+| flat dense top-10 (A4-equivalent) | 10 | 97.1 % | **82.4 %** |
+| **re-rank 50 → keep 10** | 10 | 97.1 % | **80.9 %** (worse) |
+
+Per-query at 5 slots: **8 improved, 9 worsened, 19 unchanged** — e.g. `s028`'s gold chunk moved
+dense rank 10 → 1 (coverage 0.00 → 1.00) but `s006`'s moved 4 → 17 (1.00 → 0.00). The re-ranker is
+genuinely reordering (scores span 0.00–0.99 and it does promote gold chunks), it just is not
+net-positive: at equal slots it ties, and at the deployed 10 slots it is slightly *negative*.
+
+Second hypothesis tested in the same pass — **temporal fan-out** (one dense query per year,
+unioned), on the theory that the missing line lives in an under-represented year slice:
+
+| strategy | slots | Hit | coverage |
+|---|---|---|---|
+| flat dense top-10 | 10 | 100 % | 82.4 % |
+| year fan-out top-3/year | 9 | 100 % | 75.2 % (worse) |
+| year fan-out top-4/year | 12 | 100 % | 83.8 % (+1.4 pts for +2 slots — not a mechanism win) |
+
+**Conclusion:** the residual coverage gap is **not** a selection/ranking problem and **not** a
+temporal-allocation problem. Reordering the same candidate pool cannot add evidence, and the gold
+lines that are missing are the ones *semantically distant* from the question (the 2024 "可以试试
+Supabase" recommendation is part of the production-database arc, but it is about a course project).
+Reaching them needs the **question** to be decomposed into per-slice sub-questions, not a better
+sort of one similarity pool.
+
+**Caveat recorded:** `bge-reranker-base` truncates at 512 tokens while session chunks are ~490
+characters (≈700+ tokens), so part of every long session is never scored by the cross-encoder —
+including, often, the decisive line. A future re-test should re-rank at **event** granularity
+(or with a longer window) before concluding re-ranking is useless in general.
+
+## What was kept vs. rejected
+
+* **Rejected (not adopted):** re-ranking as part of the reference configuration. The reference
+  stays **A4 = session units + k=10** (PASS 29/36, coverage 84.07 %).
+* **Kept (infrastructure, off by default, tested):** `core/quivr_core/rag/reranker.py`
+  (`LocalCrossEncoderReranker`), `DefaultRerankers.LOCAL`, and the `--rerank-model/--candidate-k`
+  knob. Justification: the framework's re-rank stage previously accepted **only** hosted suppliers
+  (Cohere/Jina), and `RerankerConfig.validate_model()` demanded `<SUPPLIER>_API_KEY` for *any*
+  supplier — which made a private, offline re-ranker impossible to configure at all. That is a real
+  bug, fixed and covered by tests (`LOCAL` needs no key; hosted suppliers still require one).
+* Zero behaviour change when the knob is unused: both frozen baselines still reproduce their
+  committed outputs byte-for-byte.
+
+## Next phase decision (refined by two measured failures)
+
+| Option | Evidence for / against | Verdict |
+|---|---|---|
+| **Phase 4/6-lite: decompose trajectory questions into per-slice sub-queries, retrieve each, union the evidence** | the missing lines are semantically distant but *individually answerable* — a sub-question like "课程项目最开始用的哪个数据库" matches the 2024-03 line directly | **do this next** |
+| Re-rank at event granularity | untested; plausible given the truncation caveat | second candidate |
+| Hybrid BM25 + RRF | still untested, and the failing questions deliberately avoid entity tokens | defer |
+| Wider k alone (k=20+) | works (coverage 91.7 % offline at k=20) but spends context and does not explain *why* evidence is missed | fallback, not a capability |

@@ -1,0 +1,34 @@
+{
+  "flat dense top-5": {
+    "hit": 0.9411764705882353,
+    "coverage": 0.6715686274509803,
+    "misses": [
+      "s020",
+      "s028"
+    ]
+  },
+  "flat dense top-10": {
+    "hit": 1.0,
+    "coverage": 0.8235294117647058,
+    "misses": []
+  },
+  "year fan-out top-2/year (6 slots)": {
+    "hit": 0.9117647058823529,
+    "coverage": 0.6568627450980392,
+    "misses": [
+      "s019",
+      "s020",
+      "s030"
+    ]
+  },
+  "year fan-out top-3/year (9 slots)": {
+    "hit": 1.0,
+    "coverage": 0.7524509803921569,
+    "misses": []
+  },
+  "year fan-out top-4/year (12 slots)": {
+    "hit": 1.0,
+    "coverage": 0.8382352941176471,
+    "misses": []
+  }
+}
