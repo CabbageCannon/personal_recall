@@ -13,11 +13,11 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | 0.5 | Recall Stress Corpus + Stress Baseline + dataset audit | ✅ done — baseline visibly fails, failure attributed to retrieval |
 | 1 | MemoryEvent / Source Adapter + conversation-aware chunking | ✅ done — kept: additive on top of the window control |
 | 2 | Retrieval trace / Evidence representation on structured memory | ⏸ (reranking evaluated in round 2: negative, not adopted) |
-| 3 | Hybrid retrieval (BM25 + dense + RRF) | 🔄 +2.4 pts coverage offline @matched slots; reranker measured negative |
+| 3 | Hybrid retrieval (BM25 + dense + RRF) | ✅ done — adopted as A5 (+1 PASS, +0.98 coverage); reranker measured negative |
 | 4 | Temporal retrieval | ⏸ |
 | 5 | Entity-aware recall (Person / Alias) | ⏸ |
 | 6 | Multi-evidence / state evolution | ⏸ |
-| 7 | Grounded generation (EvidenceItem, citation, abstention) | ⏸ |
+| 7 | Grounded generation (EvidenceItem, citation, abstention) | 🔄 justified: first generation-side failures measured (over-abstention s025, misreading s007) |
 | 8 | Persistence (PostgreSQL + pgvector) | ⏸ |
 | 9 | Product UI | ⏸ |
 | 10 | Multimodal recall | ⏸ |
@@ -481,3 +481,78 @@ max 64.5 s). Anyone calling this model directly must budget for reasoning tokens
   distractors, longer arcs) is now on the critical path, because at k=20 this corpus is ≥91 % covered
   and mechanism A/Bs can no longer separate.
 * Reference configuration unchanged: **A4 = session units + k=10** (PASS 29/36, coverage 84.07 %).
+
+---
+
+# Phase 4 — hybrid retrieval (dense + BM25, weighted RRF): **ADOPTED as the new reference A5**
+
+Implementation: `core/quivr_core/rag/hybrid.py` — CJK-bigram tokenizer, `BM25Index`/`BM25Retriever`
+(no `rank_bm25` dependency: the formula is the one that was measured), `HybridRRFRetriever`
+(reuses the framework's `EnsembleRetriever.rank_fusion`, weighted RRF `c=60`, then **truncates to
+`k`** — the plain ensemble returns the union of its retrievers' lists, which would quietly exceed the
+configured context budget), plus a guarded `iter_documents` vector-store enumerator.
+`HybridConfig` is **disabled by default**; `--hybrid/--hybrid-pool` are tag-guarded knobs.
+17 new tests (44 total).
+
+## Implementation validated against the measurement *before* spending API budget
+
+Driving `get_retriever` over a real FAISS index of the 101 session chunks:
+
+| configuration | slots | Hit@k | coverage | vs offline probe |
+|---|---|---|---|---|
+| dense only (hybrid disabled) | 10 | 100 % | 82.4 % | ✅ identical |
+| hybrid, pool 10 → cut 10 | 10 | 100 % | 84.8 % | ✅ identical |
+| hybrid, pool 20 → cut 10 | 10 | 100 % | 84.8 % | — |
+| **hybrid, pool 30 → cut 10** | 10 | 100 % | **86.3 %** | measured plateau (50/80 identical) |
+
+Dense-only and pool-10 reproduce the probe exactly, so the deployed mechanism is the measured one;
+`candidate_k=30` is the measured plateau and is now the default. The async path (`ainvoke`, which the
+pipeline actually uses) and FAISS `docstore._dict` enumeration were verified as well.
+
+## End-to-end paid arm
+
+| arm | unit | k | hybrid | Hit@k | coverage | PASS | PARTIAL | FAIL | unsupported | latency |
+|---|---|---|---|---|---|---|---|---|---|---|
+| A4 reference | session | 10 | no | 97.1 % | 84.07 % | 29 (80.6 %) | 6 | 1 | 0 % | 12,763 ms |
+| **A5 hybrid** | session | 10 | **yes** | 97.1 % | **85.05 %** | **30 (83.3 %)** | 5 | 1 | 0 % | **11,243 ms** |
+
+All 36 queries retrieved a different evidence set than A4 (mechanism verified active). Retrieval
+misses fell to one query (`s006`). Arm ladder of PASS: `20 → 24 → 26 → 29 → 30 / 36` for
+`frozen → session-k5 → fixed-k10 → A4 → A5`.
+
+## Honest reading: a small, mixed win
+
+* Net **+1 PASS** with **3 gains and 2 regressions** — within ±1 query of noise on 36 queries. The
+  reason to adopt is the *direction* (hybrid beat dense at every measured slot budget: offline +2.4
+  @10 and +2.2 @20, real +0.9 @10), not the size.
+* Gains were retrieval-driven and real: `s016` FAIL→PASS (2024-06-15 gym line retrieved), `s020`
+  PARTIAL→PASS (destination "Railway" finally retrieved), `s028` PARTIAL→PASS (2024-11-19 account
+  line retrieved).
+* Regressions: `s013` PASS→PARTIAL (hybrid *lost* the 2025-10-11 Brave Search line that dense had —
+  fusion can demote as well as promote), and `s025` PASS→FAIL.
+* The probe **over-predicted** (+3.9 offline vs +0.9 real) because the real dense baseline (84.07 %)
+  already exceeded the probe's 82.4 %. Probe numbers are predictions, not results.
+* Latency improved (11.2 s vs 12.8 s) but this is not attributed to the mechanism — no controlled
+  comparison, model-side variance dominates.
+
+## New finding: the failure profile is no longer purely retrieval-side
+
+`stress_hybrid_k10_label_diagnostics.json` splits the 6 imperfect queries:
+
+| cause | ids |
+|---|---|
+| retrieval (decisive line missing) | `s013`, `s019`, `s023`, `s030` |
+| **generation** (evidence complete, answer still wrong) | **`s007`** (misreads the retrieved 2026-05-17 exchange and asserts a May start), **`s025`** (all 4 gold lines retrieved, yet it refuses to disambiguate 王哥=小王) |
+
+First measured justification for **Phase 7 (grounded generation / abstention control)**: not
+hallucination (unsupported claims remain 0/36 in every arm) but *over-abstention and misreading of
+retrieved evidence*.
+
+## Decision
+
+* **Adopt A5 (session units + k=10 + hybrid RRF) as the new reference**, with
+  `HybridConfig.enabled` still defaulting to **False** so the frozen baselines stay byte-identical.
+* Keep the Phase 3 saturation warning: the next *retrieval* experiment needs a harder corpus
+  (Corpus v2) to be measurable at this plateau.
+* **Next phase (now evidence-backed):** grounded-generation work targeting over-abstention and
+  evidence misreading (`s025`, `s007`) — the retrieval side cannot fix those.
