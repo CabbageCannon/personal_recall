@@ -37,6 +37,7 @@ from quivr_core.llm import LLMEndpoint
 from quivr_core.llm_tools.llm_tools import LLMToolFactory
 from quivr_core.rag.entities.chat import ChatHistory
 from quivr_core.rag.entities.config import DefaultRerankers, NodeConfig, RetrievalConfig
+from quivr_core.rag.hybrid import BM25Retriever, HybridRRFRetriever, iter_documents
 from quivr_core.rag.reranker import LocalCrossEncoderReranker
 from quivr_core.rag.entities.models import (
     LangchainMetadata,
@@ -319,15 +320,49 @@ class QuivrQARAGLangGraph:
         """
         Returns a retriever that can retrieve documents from the vector store.
 
+        When hybrid retrieval is enabled in the retrieval config, the dense retriever is
+        fused with a lexical BM25 retriever over the same documents (weighted RRF), and
+        the fused ranking is cut back to ``RetrievalConfig.k`` so the model receives
+        exactly as many chunks as configured.
+
         Returns:
-            VectorStoreRetriever: The retriever.
+            BaseRetriever: The retriever (dense only, or dense + BM25 fused).
         """
-        if self.vector_store:
-            retriever = self.vector_store.as_retriever(**kwargs)
-        else:
+        if self.vector_store is None:
             raise ValueError("No vector store provided")
 
-        return retriever
+        hybrid_config = getattr(self.retrieval_config, "hybrid_config", None)
+        if hybrid_config is not None and hybrid_config.enabled:
+            # Both retrievers must contribute equally sized candidate lists, otherwise
+            # the fusion is asymmetric: widen the dense side to the same pool size.
+            search_kwargs = dict(kwargs.pop("search_kwargs", None) or {})
+            search_kwargs["k"] = hybrid_config.candidate_k
+            dense_retriever = self.vector_store.as_retriever(
+                search_kwargs=search_kwargs, **kwargs
+            )
+
+            documents = iter_documents(self.vector_store)
+            lexical_retriever = BM25Retriever(
+                documents=documents,
+                k=hybrid_config.candidate_k,
+                k1=hybrid_config.k1,
+                b=hybrid_config.b,
+            )
+            logger.debug(
+                "hybrid retrieval: %s documents, pool=%s, weights=%s, cut to k=%s",
+                len(documents),
+                hybrid_config.candidate_k,
+                hybrid_config.weights,
+                self.retrieval_config.k,
+            )
+            return HybridRRFRetriever(
+                retrievers=[dense_retriever, lexical_retriever],
+                weights=hybrid_config.weights,
+                k=self.retrieval_config.k,
+                c=hybrid_config.rrf_c,
+            )
+
+        return self.vector_store.as_retriever(**kwargs)
 
     def routing(self, state: AgentState) -> List[Send]:
         """

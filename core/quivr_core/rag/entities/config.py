@@ -485,6 +485,25 @@ class RerankerConfig(QuivrBaseConfig):
                 )
 
 
+class HybridConfig(QuivrBaseConfig):
+    """Dense + BM25 fusion (see ``quivr_core.rag.hybrid``).
+
+    Disabled by default: enabling it changes which chunks reach the model, so it is an
+    explicit, measurable choice rather than a silent default.
+    """
+
+    enabled: bool = False
+    #: RRF weights for [dense, lexical]; equal weighting matches the measured setup.
+    weights: list[float] = [0.5, 0.5]
+    #: Candidates fetched per retriever before fusion; the fused list is cut back to
+    #: ``RetrievalConfig.k``, so this only widens the pool being fused. 30 is the
+    #: measured plateau on the stress corpus (coverage 84.8 % at 10-20, 86.3 % at 30+).
+    candidate_k: int = 30
+    k1: float = 1.2
+    b: float = 0.75
+    rrf_c: int = 60
+
+
 class ConditionalEdgeConfig(QuivrBaseConfig):
     routing_function: str
     conditions: Union[list, Dict[Hashable, str]]
@@ -613,6 +632,7 @@ class WorkflowConfig(QuivrBaseConfig):
 
 class RetrievalConfig(QuivrBaseConfig):
     reranker_config: RerankerConfig = RerankerConfig()
+    hybrid_config: HybridConfig = HybridConfig()
     llm_config: LLMEndpointConfig = LLMEndpointConfig()
     max_history: int = 10
     max_files: int = 20
