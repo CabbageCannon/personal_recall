@@ -17,7 +17,7 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | 4 | Temporal retrieval | ⏸ |
 | 5 | Entity-aware recall (Person / Alias) | ⏸ |
 | 6 | Multi-evidence / state evolution | ⏸ |
-| 7 | Grounded generation (EvidenceItem, citation, abstention) | 🔄 justified: first generation-side failures measured (over-abstention s025, misreading s007) |
+| 7 | Grounded generation (EvidenceItem, citation, abstention) | 🔄 started: timeline prompt fixed over-abstention (s025) and the s019 hedge; noise floor measured |
 | 8 | Persistence (PostgreSQL + pgvector) | ⏸ |
 | 9 | Product UI | ⏸ |
 | 10 | Multimodal recall | ⏸ |
@@ -556,3 +556,77 @@ retrieved evidence*.
   (Corpus v2) to be measurable at this plateau.
 * **Next phase (now evidence-backed):** grounded-generation work targeting over-abstention and
   evidence misreading (`s025`, `s007`) — the retrieval side cannot fix those.
+
+---
+
+# Phase 5 — time-line answer prompt: targeted fixes landed, plus a noise-floor discovery
+
+Hypothesis: the two generation-side failures map onto two stock prompt instructions — *"if you
+cannot provide an answer … just answer that you don't have the answer"* (drives `s025`'s
+over-abstention) and *"if the provided context contains contradictory … information, state so"*
+(drives `s007` reporting both readings instead of resolving them).
+
+Change: `--answer-prompt timeline` appends explicit rules (order the dated records first; commit
+when they jointly settle the fact; only say "no record" when none touches it; prefer the
+contemporaneous dated statement when records conflict; distinguish plan from what happened).
+Core gap exposed and fixed: `custom_prompts` is a **read-only `mappingproxy` with no registration
+API**, so overriding a prompt was impossible without touching a private dict — added
+`register_prompt(name, prompt, override=False)`, mirroring `register_processor`.
+Also added `--max-output-tokens` and `--temperature` knobs (both default to the frozen values).
+
+## Result (A6 vs A5 — identical retrieval config, only the prompt differs)
+
+| arm | PASS | PARTIAL | FAIL | unsupported | coverage | latency |
+|---|---|---|---|---|---|---|
+| A5 stock prompt | 30 (83.3 %) | 5 | 1 (`s025`) | 0 % | 85.05 % | 11,243 ms |
+| **A6 timeline prompt** | **31 (86.1 %)** | 5 | **0** | **0 %** | 83.58 % | 13,539 ms |
+
+Only **3 of 36** verdicts changed, and the attribution matters more than the count:
+
+| id | change | attribution |
+|---|---|---|
+| `s019` | PARTIAL → PASS | **prompt**: picks the dated contemporaneous line over the later "别拖到五月才动手" remark, concludes late April ≈ 04-26, "没有拖到 5 月" — reproduces the gold |
+| `s025` | FAIL → PASS | **prompt**: commits to "不是同一个人" using the retrieved 王哥→小王 reply and 小汪's MySQL line, where A5 refused despite complete evidence |
+| `s021` | PASS → PARTIAL | **retrieval variance**, not the prompt: the decisive 2026-04-06 line was simply not retrieved this run |
+
+`s007` is half-fixed: the affirmative "到五月才投了十来家" error is gone and every delay stage is
+now dated, but the closing line still hedges "四月下旬/五月" instead of resolving to late April.
+No new unsupported claims anywhere (0/36 in both arms; the stronger commitment instruction did not
+induce fabrication — every date and number traces to the arm's own retrieved chunks).
+
+## The bigger finding: a measured noise floor that invalidates small single-run deltas
+
+A5 and A6 have an **identical retrieval configuration** (session units, k=10, hybrid RRF) — only
+the *answer* prompt differs, which cannot affect retrieval. Yet:
+
+| between two runs of the same retrieval config | value |
+|---|---|
+| queries with an identical retrieved evidence set | **4 / 36** |
+| mean Jaccard overlap of retrieved sets | 0.740 |
+| mean per-query coverage change | **2.78 points** |
+| max per-query coverage change | 50 points |
+| aggregate coverage change | 1.38 points |
+
+Cause: the pipeline **rewrites the query with an LLM call** (`CONDENSE_TASK_PROMPT`) at the frozen
+temperature 0.3, and retrieval runs on that rewritten query. So run-to-run variation in *evidence*
+is real and large. Implications:
+
+* Any single-run delta below ~2–3 coverage points, or ~±1–2 PASS on 36 queries, **cannot be
+  attributed to a mechanism** — which is exactly the size of both the hybrid win (+0.98 coverage,
+  +1 PASS) and this prompt win (+1 PASS).
+* **A5's adoption is therefore re-framed**: it rests on the *deterministic* offline grid
+  (hybrid beat dense at every matched budget, reproducible), not on the +0.98 real-eval delta.
+* **A6's adoption rests on mechanism attribution, not the aggregate**: two specific designed fixes
+  landed on the two specific failures the change targeted, with groundedness intact.
+* New knobs `--temperature` (0.3 → 0.0 makes the rewrite deterministic) and `--max-output-tokens`
+  are now available for a reproducibility protocol.
+
+## Decision
+
+* **Adopt A6 (A5 + timeline answer prompt) as the new reference** — on attribution, not on the
+  +1 aggregate.
+* **New evaluation protocol requirement (from this round):** every future A/B must either
+  (a) be measured on the deterministic offline probes where possible, (b) run at `--temperature 0`,
+  or (c) be reported with an explicit repeat-run noise band. Small single-run claims are retired.
+* Remaining non-PASS in A6: `s007` (half-fixed hedge), `s013`, `s021`, `s023`, `s030` — all
+  retrieval-caused except `s007`'s residual hedge.
