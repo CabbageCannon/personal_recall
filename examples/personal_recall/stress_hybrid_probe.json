@@ -1,0 +1,41 @@
+{
+  "dense top-10": {
+    "slots": 10,
+    "hit": 1.0,
+    "coverage": 0.8235294117647058,
+    "misses": []
+  },
+  "dense top-20": {
+    "slots": 20,
+    "hit": 1.0,
+    "coverage": 0.9166666666666666,
+    "misses": []
+  },
+  "bm25 top-10": {
+    "slots": 10,
+    "hit": 0.9411764705882353,
+    "coverage": 0.7818627450980392,
+    "misses": [
+      "s006",
+      "s030"
+    ]
+  },
+  "bm25 top-20": {
+    "slots": 20,
+    "hit": 1.0,
+    "coverage": 0.9117647058823529,
+    "misses": []
+  },
+  "rrf(dense10, bm25_10) top-10": {
+    "slots": 10,
+    "hit": 1.0,
+    "coverage": 0.8480392156862745,
+    "misses": []
+  },
+  "rrf(dense20, bm25_20) top-20": {
+    "slots": 20,
+    "hit": 1.0,
+    "coverage": 0.9387254901960784,
+    "misses": []
+  }
+}
