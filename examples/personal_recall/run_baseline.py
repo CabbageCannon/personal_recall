@@ -144,6 +144,15 @@ def save_results(results: list[dict]) -> None:
             indent=2,
         )
 
+
+def load_existing_results() -> list[dict]:
+    if not RESULT_PATH.exists():
+        return []
+
+    with RESULT_PATH.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
 if __name__ == "__main__":
     dotenv.load_dotenv()
 
@@ -203,14 +212,43 @@ if __name__ == "__main__":
     print(f"Chunk overlap: {CHUNK_OVERLAP}")
     print(f"Embedding model: {EMBEDDING_MODEL_PATH}")
     
-    # 7. Run baseline evaluation
-    results = []
+    # 7. Run baseline evaluation (incremental / resume)
+    existing_results = load_existing_results()
+
+    result_by_id = {
+        result["query_id"]: result
+        for result in existing_results
+    }
+
+    skipped_count = 0
+    executed_count = 0
+
+    print(f"Existing results: {len(existing_results)}")
 
     for index, query in enumerate(queries, start=1):
+        query_id = query["id"]
+
         print(
             f"\n[{index:02d}/{len(queries)}] "
-            f"{query['id']} - {query['question']}"
+            f"{query_id} - {query['question']}"
         )
+
+        existing_result = result_by_id.get(query_id)
+
+        # Resume is only safe when query_id AND question both match.
+        # q022 keeps its id but changed its question, so it must be re-run.
+        if (
+            existing_result is not None
+            and existing_result.get("question") == query["question"]
+        ):
+            print("Status: SKIP (existing result matches current question)")
+            skipped_count += 1
+            continue
+
+        if existing_result is not None:
+            print("Status: RE-RUN (question changed)")
+        else:
+            print("Status: RUN (new query)")
 
         # Every gold query gets an independent chat history.
         eval_chat = ChatHistory(
@@ -252,11 +290,21 @@ if __name__ == "__main__":
             **retrieval_eval,
         }
 
-        results.append(result)
+        # Re-running a query overwrites its old result; new queries are added.
+        result_by_id[query_id] = result
+        executed_count += 1
 
         # Save after every query so a later API failure
         # does not lose completed results.
-        save_results(results)
+        # Rebuild in queries.json order so a re-run query (e.g. q022)
+        # stays in place instead of moving to the end of the file.
+        ordered_results = [
+            result_by_id[current_query["id"]]
+            for current_query in queries
+            if current_query["id"] in result_by_id
+        ]
+
+        save_results(ordered_results)
 
         print(f"Answer: {response.answer}")
         print(f"Latency: {latency_ms:.2f} ms")
@@ -275,5 +323,7 @@ if __name__ == "__main__":
             )
 
     print("\n" + "=" * 80)
-    print(f"Finished {len(results)} queries")
+    print(f"Total queries: {len(queries)}")
+    print(f"Executed: {executed_count}")
+    print(f"Skipped: {skipped_count}")
     print(f"Results saved to: {RESULT_PATH}")
