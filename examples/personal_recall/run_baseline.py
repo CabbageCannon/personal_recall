@@ -21,6 +21,9 @@ from quivr_core.rag.entities.config import (
     RetrievalConfig,
 )
 from quivr_core.rag.entities.chat import ChatHistory
+
+from memory import SessionConfig
+from memory.processor import ConversationSessionProcessor
 from eval_utils import (
     evidence_matches_source,
     strict_evidence_matches_source,
@@ -66,6 +69,11 @@ EMBEDDING_MODEL_PATH = Path(r"D:\AIModels\bge-small-zh-v1.5")
 RETRIEVAL_K = 5
 CHUNK_SIZE = 400
 CHUNK_OVERLAP = 100
+
+#: The frozen baseline retrieval unit. Anything else is an experiment and must be
+#: tagged so it cannot overwrite the baseline results.
+DEFAULT_CHUNKING = "fixed"
+DEFAULT_MAX_SESSION_CHARS = 900
 
 def load_queries(queries_path: Path) -> list[dict]:
     with queries_path.open("r", encoding="utf-8") as f:
@@ -188,13 +196,59 @@ if __name__ == "__main__":
             "'stress' reads data/stress_chats.txt."
         ),
     )
+    parser.add_argument(
+        "--chunking",
+        choices=("fixed", "session"),
+        default=DEFAULT_CHUNKING,
+        help=(
+            "Retrieval unit (default: %(default)s). 'fixed' is the frozen baseline "
+            "(400/100 character slices); 'session' uses conversation sessions."
+        ),
+    )
+    parser.add_argument(
+        "--k",
+        type=int,
+        default=RETRIEVAL_K,
+        help="Top-K retrieved for the answer (default: %(default)s, the frozen baseline).",
+    )
+    parser.add_argument(
+        "--max-session-chars",
+        type=int,
+        default=DEFAULT_MAX_SESSION_CHARS,
+        help="Session size budget when --chunking session (default: %(default)s).",
+    )
+    parser.add_argument(
+        "--tag",
+        default=None,
+        help=(
+            "Experiment tag; results are written to <dataset>_<tag>_results.json "
+            "instead of the frozen baseline file."
+        ),
+    )
     args = parser.parse_args()
 
     paths = dataset_paths(args.dataset)
 
+    # Guardrail: a non-baseline configuration must never overwrite the frozen
+    # baseline results, so it has to be named explicitly.
+    is_baseline_config = args.chunking == DEFAULT_CHUNKING and args.k == RETRIEVAL_K
+    if not is_baseline_config and not args.tag:
+        parser.error(
+            "--tag is required when --chunking/--k differ from the frozen baseline "
+            f"({DEFAULT_CHUNKING} chunking, k={RETRIEVAL_K}); this keeps "
+            f"{paths['results'].name} untouched."
+        )
+    if args.tag:
+        results_path = BASE_DIR / f"{args.dataset}_{args.tag}_results.json"
+    else:
+        results_path = paths["results"]
+
     # Dataset-specific brain name: an index built from one corpus must
-    # never be confused with an index built from another corpus.
+    # never be confused with an index built from another corpus (or from a
+    # different chunking of it).
     brain_name = f"personal_recall_{args.dataset}"
+    if args.tag:
+        brain_name = f"{brain_name}_{args.tag}"
 
     dotenv.load_dotenv()
 
@@ -202,7 +256,9 @@ if __name__ == "__main__":
     print(f"Dataset: {args.dataset}")
     print(f"Corpus: {paths['corpus']}")
     print(f"Queries: {paths['queries']}")
-    print(f"Results: {paths['results']}")
+    print(f"Results: {results_path}")
+    print(f"Chunking: {args.chunking}")
+    print(f"Retrieval k: {args.k}")
     print(f"Brain name: {brain_name}")
 
     # 1. Load gold queries
@@ -227,12 +283,30 @@ if __name__ == "__main__":
         encode_kwargs={"normalize_embeddings": True},
     )
     
-    # 4. Register TXT processor
-    register_processor(
-        FileExtension.txt,
-        SimpleTxtProcessor,
-        override=True,
-    )
+    # 4. Register the TXT processor for the requested retrieval unit
+    if args.chunking == "session":
+        # Phase 1 experiment: one retrieval unit per conversation session.
+        # Everything downstream (embedder, index, k, prompt) stays identical.
+        register_processor(
+            FileExtension.txt,
+            ConversationSessionProcessor,
+            override=True,
+        )
+        processor_kwargs = {
+            "session_config": SessionConfig(max_chars=args.max_session_chars)
+        }
+    else:
+        register_processor(
+            FileExtension.txt,
+            SimpleTxtProcessor,
+            override=True,
+        )
+        processor_kwargs = {
+            "splitter_config": SplitterConfig(
+                chunk_size=CHUNK_SIZE,
+                chunk_overlap=CHUNK_OVERLAP,
+            )
+        }
     
     # 5. Build Brain once
     brain = Brain.from_files(
@@ -240,29 +314,27 @@ if __name__ == "__main__":
         file_paths=[paths["corpus"]],
         llm=llm,
         embedder=embedder,
-        processor_kwargs={
-            "splitter_config": SplitterConfig(
-                chunk_size=CHUNK_SIZE,
-                chunk_overlap=CHUNK_OVERLAP,
-            )
-        },
+        processor_kwargs=processor_kwargs,
     )
     
     # 6. Fix baseline retrieval configuration
     retrieval_config = RetrievalConfig(
         llm_config=llm_config,
-        k=RETRIEVAL_K,
+        k=args.k,
     )
     
     print(f"Loaded queries: {len(queries)}")
     print("Brain ready")
     print(f"Retrieval k: {retrieval_config.k}")
-    print(f"Chunk size: {CHUNK_SIZE}")
-    print(f"Chunk overlap: {CHUNK_OVERLAP}")
+    if args.chunking == "session":
+        print(f"Session max chars: {args.max_session_chars}")
+    else:
+        print(f"Chunk size: {CHUNK_SIZE}")
+        print(f"Chunk overlap: {CHUNK_OVERLAP}")
     print(f"Embedding model: {EMBEDDING_MODEL_PATH}")
     
     # 7. Run baseline evaluation (incremental / resume)
-    existing_results = load_existing_results(paths["results"])
+    existing_results = load_existing_results(results_path)
 
     result_by_id = {
         result["query_id"]: result
@@ -353,7 +425,7 @@ if __name__ == "__main__":
             if current_query["id"] in result_by_id
         ]
 
-        save_results(ordered_results, paths["results"])
+        save_results(ordered_results, results_path)
 
         print(f"Answer: {response.answer}")
         print(f"Latency: {latency_ms:.2f} ms")
@@ -375,4 +447,4 @@ if __name__ == "__main__":
     print(f"Total queries: {len(queries)}")
     print(f"Executed: {executed_count}")
     print(f"Skipped: {skipped_count}")
-    print(f"Results saved to: {paths['results']}")
+    print(f"Results saved to: {results_path}")

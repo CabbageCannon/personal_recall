@@ -120,6 +120,14 @@ def main():
             "'stress' reads stress_results.json."
         ),
     )
+    parser.add_argument(
+        "--tag",
+        default=None,
+        help=(
+            "Experiment tag produced by run_baseline.py --tag; reads "
+            "<dataset>_<tag>_results.json and writes <dataset>_<tag>_summary.json."
+        ),
+    )
     args = parser.parse_args()
 
     paths = dataset_paths(args.dataset)
@@ -128,6 +136,12 @@ def main():
     result_path = paths["results"]
     summary_path = paths["summary"]
     labels_path = paths["labels"]
+
+    if args.tag:
+        # Tagged experiment: never read or write the frozen baseline files.
+        result_path = BASE_DIR / f"{args.dataset}_{args.tag}_results.json"
+        summary_path = BASE_DIR / f"{args.dataset}_{args.tag}_summary.json"
+        labels_path = BASE_DIR / f"{args.dataset}_{args.tag}_manual_labels.json"
 
     # Self-documenting run banner
     print(f"Dataset: {args.dataset}")
