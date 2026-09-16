@@ -1,3 +1,4 @@
+import argparse
 import json
 from pathlib import Path
 from time import perf_counter
@@ -32,9 +33,29 @@ from eval_utils import (
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 
-CHAT_PATH = DATA_DIR / "chats.txt"
-QUERIES_PATH = DATA_DIR / "queries.json"
-RESULT_PATH = BASE_DIR / "baseline_results.json"
+# One per-dataset config is the single source of truth for every
+# dataset-specific path. "small" is the default and keeps the original
+# file names, so a run without --dataset behaves exactly as before.
+DATASET_CONFIG = {
+    "small": {
+        "corpus": DATA_DIR / "chats.txt",
+        "queries": DATA_DIR / "queries.json",
+        "results": BASE_DIR / "baseline_results.json",
+    },
+    "stress": {
+        "corpus": DATA_DIR / "stress_chats.txt",
+        "queries": DATA_DIR / "stress_queries.json",
+        "results": BASE_DIR / "stress_results.json",
+    },
+}
+
+DEFAULT_DATASET = "small"
+
+
+def dataset_paths(dataset: str) -> dict[str, Path]:
+    # Resolve every path for one dataset from the config above, so no
+    # corpus / queries / results path is hard-coded further down.
+    return DATASET_CONFIG[dataset]
 
 EMBEDDING_MODEL_PATH = Path(r"D:\AIModels\bge-small-zh-v1.5")
 
@@ -46,8 +67,8 @@ RETRIEVAL_K = 5
 CHUNK_SIZE = 400
 CHUNK_OVERLAP = 100
 
-def load_queries() -> list[dict]:
-    with QUERIES_PATH.open("r", encoding="utf-8") as f:
+def load_queries(queries_path: Path) -> list[dict]:
+    with queries_path.open("r", encoding="utf-8") as f:
         queries = json.load(f)
 
     return queries
@@ -135,8 +156,8 @@ def serialize_sources(sources: list) -> list[dict]:
 
     return serialized  
 
-def save_results(results: list[dict]) -> None:
-    with RESULT_PATH.open("w", encoding="utf-8") as f:
+def save_results(results: list[dict], result_path: Path) -> None:
+    with result_path.open("w", encoding="utf-8") as f:
         json.dump(
             results,
             f,
@@ -145,19 +166,47 @@ def save_results(results: list[dict]) -> None:
         )
 
 
-def load_existing_results() -> list[dict]:
-    if not RESULT_PATH.exists():
+def load_existing_results(result_path: Path) -> list[dict]:
+    if not result_path.exists():
         return []
 
-    with RESULT_PATH.open("r", encoding="utf-8") as f:
+    with result_path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Run the personal recall retrieval baseline.",
+    )
+    parser.add_argument(
+        "--dataset",
+        choices=sorted(DATASET_CONFIG),
+        default=DEFAULT_DATASET,
+        help=(
+            "Which dataset to run (default: %(default)s). "
+            "'small' reads data/chats.txt, "
+            "'stress' reads data/stress_chats.txt."
+        ),
+    )
+    args = parser.parse_args()
+
+    paths = dataset_paths(args.dataset)
+
+    # Dataset-specific brain name: an index built from one corpus must
+    # never be confused with an index built from another corpus.
+    brain_name = f"personal_recall_{args.dataset}"
+
     dotenv.load_dotenv()
 
+    # 0. Self-documenting run banner
+    print(f"Dataset: {args.dataset}")
+    print(f"Corpus: {paths['corpus']}")
+    print(f"Queries: {paths['queries']}")
+    print(f"Results: {paths['results']}")
+    print(f"Brain name: {brain_name}")
+
     # 1. Load gold queries
-    queries = load_queries()
+    queries = load_queries(paths["queries"])
 
     # 2. Build LLM
     llm_config = LLMEndpointConfig(
@@ -187,8 +236,8 @@ if __name__ == "__main__":
     
     # 5. Build Brain once
     brain = Brain.from_files(
-        name="personal_recall_baseline",
-        file_paths=[CHAT_PATH],
+        name=brain_name,
+        file_paths=[paths["corpus"]],
         llm=llm,
         embedder=embedder,
         processor_kwargs={
@@ -213,7 +262,7 @@ if __name__ == "__main__":
     print(f"Embedding model: {EMBEDDING_MODEL_PATH}")
     
     # 7. Run baseline evaluation (incremental / resume)
-    existing_results = load_existing_results()
+    existing_results = load_existing_results(paths["results"])
 
     result_by_id = {
         result["query_id"]: result
@@ -304,7 +353,7 @@ if __name__ == "__main__":
             if current_query["id"] in result_by_id
         ]
 
-        save_results(ordered_results)
+        save_results(ordered_results, paths["results"])
 
         print(f"Answer: {response.answer}")
         print(f"Latency: {latency_ms:.2f} ms")
@@ -326,4 +375,4 @@ if __name__ == "__main__":
     print(f"Total queries: {len(queries)}")
     print(f"Executed: {executed_count}")
     print(f"Skipped: {skipped_count}")
-    print(f"Results saved to: {RESULT_PATH}")
+    print(f"Results saved to: {paths['results']}")

@@ -1,3 +1,4 @@
+import argparse
 import json
 from collections import defaultdict
 from pathlib import Path
@@ -7,11 +8,33 @@ from eval_utils import (
 )
 
 BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
 
-QUERIES_PATH = BASE_DIR / "data" / "queries.json"
-RESULT_PATH = BASE_DIR / "baseline_results.json"
-SUMMARY_PATH = BASE_DIR / "baseline_summary.json"
-LABELS_PATH = BASE_DIR / "manual_labels.json"
+# One per-dataset config is the single source of truth for every
+# dataset-specific path. "small" is the default and keeps the original
+# file names, so a run without --dataset behaves exactly as before.
+DATASET_CONFIG = {
+    "small": {
+        "queries": DATA_DIR / "queries.json",
+        "results": BASE_DIR / "baseline_results.json",
+        "summary": BASE_DIR / "baseline_summary.json",
+        "labels": BASE_DIR / "manual_labels.json",
+    },
+    "stress": {
+        "queries": DATA_DIR / "stress_queries.json",
+        "results": BASE_DIR / "stress_results.json",
+        "summary": BASE_DIR / "stress_summary.json",
+        "labels": BASE_DIR / "stress_manual_labels.json",
+    },
+}
+
+DEFAULT_DATASET = "small"
+
+
+def dataset_paths(dataset: str) -> dict[str, Path]:
+    # Resolve every path for one dataset from the config above, so no
+    # queries / results / summary / labels path is hard-coded below.
+    return DATASET_CONFIG[dataset]
 
 def load_json(path: Path):
     with path.open("r", encoding="utf-8") as f:
@@ -84,9 +107,38 @@ def evaluate_saved_retrieval(
 
 
 def main():
-    queries = load_json(QUERIES_PATH)
-    results = load_json(RESULT_PATH)
-    labels = load_json(LABELS_PATH)
+    parser = argparse.ArgumentParser(
+        description="Summarize a personal recall retrieval run.",
+    )
+    parser.add_argument(
+        "--dataset",
+        choices=sorted(DATASET_CONFIG),
+        default=DEFAULT_DATASET,
+        help=(
+            "Which dataset to summarize (default: %(default)s). "
+            "'small' reads baseline_results.json, "
+            "'stress' reads stress_results.json."
+        ),
+    )
+    args = parser.parse_args()
+
+    paths = dataset_paths(args.dataset)
+
+    queries_path = paths["queries"]
+    result_path = paths["results"]
+    summary_path = paths["summary"]
+    labels_path = paths["labels"]
+
+    # Self-documenting run banner
+    print(f"Dataset: {args.dataset}")
+    print(f"Queries: {queries_path}")
+    print(f"Results: {result_path}")
+    print(f"Summary: {summary_path}")
+    print(f"Labels: {labels_path}")
+
+    queries = load_json(queries_path)
+    results = load_json(result_path)
+    labels = load_json(labels_path)
 
     query_by_id = {
         query["id"]: query
@@ -472,7 +524,7 @@ def main():
         "categories": category_summary,
     }
 
-    with SUMMARY_PATH.open("w", encoding="utf-8") as f:
+    with summary_path.open("w", encoding="utf-8") as f:
         json.dump(
             summary,
             f,
@@ -605,7 +657,7 @@ def main():
     )
 
     print("\n" + "=" * 80)
-    print(f"Summary saved to: {SUMMARY_PATH}")
+    print(f"Summary saved to: {summary_path}")
 
 
 if __name__ == "__main__":
