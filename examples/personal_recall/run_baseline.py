@@ -278,6 +278,24 @@ def register_cited_narrow_answer_prompt() -> None:
     )
 
 
+def build_workflow_config(variant: str) -> WorkflowConfig:
+    """Return the workflow for a variant: the stock graph, or one without the LLM rewrite.
+
+    ``no-rewrite`` drops the query-condensation node so retrieval runs on the raw question,
+    which is what makes the retrieval stage deterministic (and offline-reproducible).
+    """
+    if variant == "no-rewrite":
+        return WorkflowConfig(
+            nodes=[
+                NodeConfig(name=START, edges=["filter_history"]),
+                NodeConfig(name="filter_history", edges=["retrieve"]),
+                NodeConfig(name="retrieve", edges=["generate_rag"]),
+                NodeConfig(name="generate_rag", edges=[END]),
+            ]
+        )
+    return WorkflowConfig(nodes=DefaultWorkflow.RAG.nodes)
+
+
 def register_answer_prompt(variant: str) -> None:
     """Dispatch on the ``--answer-prompt`` value."""
     if variant == "timeline":
@@ -558,17 +576,7 @@ if __name__ == "__main__":
             f"{paths['results'].name} untouched."
         )
 
-    if args.workflow == "no-rewrite":
-        workflow_config = WorkflowConfig(
-            nodes=[
-                NodeConfig(name=START, edges=["filter_history"]),
-                NodeConfig(name="filter_history", edges=["retrieve"]),
-                NodeConfig(name="retrieve", edges=["generate_rag"]),
-                NodeConfig(name="generate_rag", edges=[END]),
-            ]
-        )
-    else:
-        workflow_config = WorkflowConfig(nodes=DefaultWorkflow.RAG.nodes)
+    workflow_config = build_workflow_config(args.workflow)
 
     register_answer_prompt(args.answer_prompt)
     if args.tag:
