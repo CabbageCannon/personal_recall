@@ -800,3 +800,76 @@ did not cause the loss; the missing "commit anyway" counterweight did.
   a conclusion that joins several sources cites all of them" — then re-run A8's config and check
   whether the 2 hedge losses come back without spending citation honesty. Retrieval is now a
   controlled constant, so the delta will be attributable.
+
+---
+
+# Phase 7b — the commitment clause: **highest PASS of the project, REJECTED for a groundedness violation**
+
+Ran exactly the experiment Phase 7 specified: A8's config plus a commitment clause
+(`--answer-prompt cited-committed` — "citing is not hedging; draw the conclusion the cited sources
+support, including conclusions that only follow from several sources together"). A8's own prompt was
+left untouched so it stays reproducible, and a test now pins that the variants are strictly additive.
+
+## Retrieval was again a controlled constant
+
+All three no-rewrite arms (`A7`, `A8`, `A9`) retrieve **identically, 36/36 including rank order**, and
+all three match the offline deterministic reference. Answer length: 235 → 267 → 273 chars.
+
+## Results
+
+| arm | PASS | PARTIAL | FAIL | unsupported claims | citation rate | misleading citations |
+|---|---|---|---|---|---|---|
+| A7 timeline (no citations) | 33 (91.7 %) | 3 | 0 | **0 %** | 0 % | n/a |
+| A8 cited | 31 (86.1 %) | 5 | 0 | **0 %** | 100 % | 0 / 36 |
+| **A9 cited + committed** | **34 (94.4 %)** | 2 | 0 | **2.78 % (1/36)** | 100 % | 0 / 36 |
+
+The clause did exactly what it was designed to do — the two hedge losses came back, with correct
+citations intact:
+
+* `s025`: `无法确认。…上下文没有说明…是同一个人` → **`不是同一个人（按现有记录看，二者没有被关联起来）`**
+* `s032`: `无法确定是否同一个。` → **`结论：根据记录看，是同一个——都用 SQLite。`**
+
+## Why it is still rejected
+
+The arm produced the **first unsupported claim in the entire project** (`s016`; unsupported claims
+were 0 % in all eleven previous arms). Asked how 小汪's gym habit evolved, A9's summary concludes:
+
+> "…→ 中断一段时间后，**2026-02 因长胖六七斤重新办年卡减肥**" and "可见小汪的健身是
+> **"练一段—停一段—因体重反弹再重启"的循环**，且一直有教练指导"
+
+while the audited gold for that query ends with **"（中间那段时间他停没停过，语料里没有交代。）"**.
+All ten of s016's own retrieved chunks were re-checked: two show active periods, one is only an
+invitation, one a trial, one a restart — **none states that he stopped**, and the only stop-line in
+the arm's own context (`我: 不去了，卡快过期了`) is about *me*, which the answer's own footnote
+admits. So the commitment instruction made the model **interpolate a state change on exactly the
+window the gold says is unestablished**, plus two smaller overreaches in the same sentence
+("重新办年卡" implies an earlier annual card; "一直有教练指导" generalises from two mentions).
+
+Precisely: the flag is **groundedness, not correctness** — no positive gold fact is contradicted, which
+is why the query still labels PASS. But an invented "stopped, then restarted" cycle about a person is
+the textbook false-memory shape, and §36 (`No Evidence = No Memory Claim`) is this project's headline
+guarantee. **+1 PASS is not worth shipping the first false memory. A9 is recorded as a negative result
+and is not adopted.**
+
+## Decision
+
+* **Reference for quality**: A7 (33/36, 0 unsupported) — unchanged.
+* **Product reference**: **A8** (31/36, 100 % citation rate, 0 misleading, 0 unsupported) — citations
+  are a product requirement, and its documented cost is 2 PASS, not any loss of groundedness.
+* **Rejected**: A9's commitment clause as written. Kept in the codebase as a named, reproducible
+  variant (`--answer-prompt cited-committed`) so the negative result can be re-checked.
+* For the record, A9 vs A8 was **3 recoveries and 0 regressions** (`s020`, `s025`, `s032` → PASS) and
+  vs A7 only `s020` moved: the clause is *effective*, it is simply not *safe*. That distinction is the
+  whole reason this phase is a rejection rather than a win.
+* **Next experiment (precisely specified by this failure):** narrow the clause — allow cross-source
+  *identity / equivalence* conclusions (the three recoveries it earned) while forbidding invented
+  temporal structure, e.g. "only conclude what the cited sources state; do not assert that something
+  stopped, continued or resumed unless a record says so". Same config, same deterministic retrieval,
+  so the delta will again be fully attributable.
+
+## Process fix from this round
+
+The grader's diagnostics sidecar arrived as **malformed JSON** (two unescaped `"` inside a quoted
+span; the labels file was fine). It was repaired by re-serialising through `json.dump`, and the gate
+list now includes a **JSON-validity sweep over every `*labels.json` / `*diagnostics.json`** before a
+commit — 19 files checked, 0 malformed.
