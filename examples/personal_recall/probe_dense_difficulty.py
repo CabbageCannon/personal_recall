@@ -86,6 +86,40 @@ def load_chunks(
     return [d.page_content for d in docs]
 
 
+def rerank_order(
+    queries: list[dict],
+    chunk_texts: list[str],
+    order: "np.ndarray",
+    model: str,
+    candidate_k: int,
+    batch_size: int,
+    max_length: int,
+) -> "np.ndarray":
+    """Re-sort the first ``candidate_k`` dense candidates with a local cross-encoder.
+
+    Only the candidate prefix is re-ordered; the rest of the ranking is appended
+    unchanged. This mirrors the framework's retrieve-then-rerank stage
+    (``RetrievalConfig.k`` candidates -> ``RerankerConfig.top_n`` kept).
+    """
+    from sentence_transformers import CrossEncoder
+
+    encoder = CrossEncoder(model, max_length=max_length, device="cpu")
+    rebuilt = np.empty_like(order)
+
+    for qi, query in enumerate(queries):
+        row = order[qi]
+        candidates = row[:candidate_k]
+        rest = row[candidate_k:]
+        pairs = [(query["question"], chunk_texts[int(i)]) for i in candidates]
+        scores = encoder.predict(pairs, batch_size=batch_size)
+        ranked = sorted(zip(candidates, scores), key=lambda pair: float(pair[1]), reverse=True)
+        rebuilt[qi] = np.concatenate(
+            [np.asarray([i for i, _ in ranked], dtype=row.dtype), rest]
+        )
+
+    return rebuilt
+
+
 def make_embedder() -> HuggingFaceEmbeddings:
     return HuggingFaceEmbeddings(
         model_name=str(EMBEDDING_MODEL_PATH),
@@ -132,6 +166,19 @@ def main() -> int:
     )
     ap.add_argument("--max-session-chars", type=int, default=900)
     ap.add_argument("--max-gap-hours", type=float, default=6.0)
+    ap.add_argument(
+        "--rerank-model",
+        default=None,
+        help="local cross-encoder to re-rank the candidate pool (offline)",
+    )
+    ap.add_argument(
+        "--candidate-k",
+        type=int,
+        default=50,
+        help="dense candidates fed to the re-ranker (default: %(default)s)",
+    )
+    ap.add_argument("--rerank-batch", type=int, default=32)
+    ap.add_argument("--rerank-max-length", type=int, default=512)
     ap.add_argument("--json-out", type=Path)
     args = ap.parse_args()
 
@@ -169,6 +216,20 @@ def main() -> int:
 
     sims = question_vecs @ chunk_vecs.T
     order = np.argsort(-sims, axis=1)
+    if args.rerank_model:
+        print(
+            f"rerank  : {args.rerank_model} over the top {args.candidate_k} dense "
+            f"candidates -> keep {args.k} (batch={args.rerank_batch})"
+        )
+        order = rerank_order(
+            queries,
+            chunk_texts,
+            order,
+            model=args.rerank_model,
+            candidate_k=args.candidate_k,
+            batch_size=args.rerank_batch,
+            max_length=args.rerank_max_length,
+        )
     top_k = order[:, : args.k]
 
     rows = []
@@ -295,6 +356,8 @@ def main() -> int:
                 "chunks": len(chunk_texts),
                 "chunking": args.chunking,
                 "max_session_chars": args.max_session_chars if args.chunking == "session" else None,
+                "rerank_model": args.rerank_model,
+                "candidate_k": args.candidate_k if args.rerank_model else None,
                 "k": args.k,
                 "totals": {
                     "answerable": len(answerable_rows),

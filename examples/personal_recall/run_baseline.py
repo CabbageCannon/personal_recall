@@ -17,7 +17,9 @@ from quivr_core.processor.registry import register_processor
 from quivr_core.processor.splitter import SplitterConfig
 from quivr_core.rag.entities.config import (
     DefaultModelSuppliers,
+    DefaultRerankers,
     LLMEndpointConfig,
+    RerankerConfig,
     RetrievalConfig,
 )
 from quivr_core.rag.entities.chat import ChatHistory
@@ -74,6 +76,8 @@ CHUNK_OVERLAP = 100
 #: tagged so it cannot overwrite the baseline results.
 DEFAULT_CHUNKING = "fixed"
 DEFAULT_MAX_SESSION_CHARS = 900
+#: Candidate pool fed to a reranker; the reranker then keeps `--k` of them.
+DEFAULT_CANDIDATE_K = 50
 
 def load_queries(queries_path: Path) -> list[dict]:
     with queries_path.open("r", encoding="utf-8") as f:
@@ -225,18 +229,39 @@ if __name__ == "__main__":
             "instead of the frozen baseline file."
         ),
     )
+    parser.add_argument(
+        "--rerank-model",
+        default=None,
+        help=(
+            "Local cross-encoder re-ranking the candidate pool before generation "
+            "(e.g. a sentence-transformers model path). Off by default."
+        ),
+    )
+    parser.add_argument(
+        "--candidate-k",
+        type=int,
+        default=DEFAULT_CANDIDATE_K,
+        help=(
+            "Retriever candidates fed to the re-ranker (default: %(default)s; "
+            "only used together with --rerank-model)."
+        ),
+    )
     args = parser.parse_args()
 
     paths = dataset_paths(args.dataset)
 
     # Guardrail: a non-baseline configuration must never overwrite the frozen
     # baseline results, so it has to be named explicitly.
-    is_baseline_config = args.chunking == DEFAULT_CHUNKING and args.k == RETRIEVAL_K
+    is_baseline_config = (
+        args.chunking == DEFAULT_CHUNKING
+        and args.k == RETRIEVAL_K
+        and args.rerank_model is None
+    )
     if not is_baseline_config and not args.tag:
         parser.error(
-            "--tag is required when --chunking/--k differ from the frozen baseline "
-            f"({DEFAULT_CHUNKING} chunking, k={RETRIEVAL_K}); this keeps "
-            f"{paths['results'].name} untouched."
+            "--tag is required when --chunking/--k/--rerank-model differ from the "
+            f"frozen baseline ({DEFAULT_CHUNKING} chunking, k={RETRIEVAL_K}, no "
+            f"reranker); this keeps {paths['results'].name} untouched."
         )
     if args.tag:
         results_path = BASE_DIR / f"{args.dataset}_{args.tag}_results.json"
@@ -259,6 +284,9 @@ if __name__ == "__main__":
     print(f"Results: {results_path}")
     print(f"Chunking: {args.chunking}")
     print(f"Retrieval k: {args.k}")
+    if args.rerank_model:
+        print(f"Reranker: local cross-encoder {args.rerank_model}")
+        print(f"Candidate k: {args.candidate_k} -> top {args.k}")
     print(f"Brain name: {brain_name}")
 
     # 1. Load gold queries
@@ -317,10 +345,26 @@ if __name__ == "__main__":
         processor_kwargs=processor_kwargs,
     )
     
-    # 6. Fix baseline retrieval configuration
+    # 6. Fix baseline retrieval configuration.
+    #    Without a reranker, `k` is the number of chunks handed to the model (the
+    #    frozen behaviour). With one, the retriever returns `candidate_k` candidates
+    #    and the reranker keeps the best `k` of them — the framework's own
+    #    retrieve-then-rerank stage.
+    if args.rerank_model:
+        reranker_config = RerankerConfig(
+            supplier=DefaultRerankers.LOCAL,
+            model=args.rerank_model,
+            top_n=args.k,
+        )
+        retrieval_k = args.candidate_k
+    else:
+        reranker_config = RerankerConfig()
+        retrieval_k = args.k
+
     retrieval_config = RetrievalConfig(
         llm_config=llm_config,
-        k=args.k,
+        k=retrieval_k,
+        reranker_config=reranker_config,
     )
     
     print(f"Loaded queries: {len(queries)}")
