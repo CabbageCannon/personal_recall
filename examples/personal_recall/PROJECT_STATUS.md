@@ -14,6 +14,7 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | 1 | MemoryEvent / Source Adapter + conversation-aware chunking | ✅ done — kept: additive on top of the window control |
 | 2 | Retrieval trace / Evidence representation on structured memory | ⏸ (reranking evaluated in round 2: negative, not adopted) |
 | 3 | Hybrid retrieval (BM25 + dense + RRF) | ✅ done — adopted as A5 (+1 PASS, +0.98 coverage); reranker measured negative |
+| M1 | **Methodology: reproducibility protocol** | ✅ done — temperature 0 is *not* reproducible; removing the LLM rewrite makes retrieval deterministic and offline-exact (A7) |
 | 4 | Temporal retrieval | ⏸ |
 | 5 | Entity-aware recall (Person / Alias) | ⏸ |
 | 6 | Multi-evidence / state evolution | ⏸ |
@@ -630,3 +631,87 @@ is real and large. Implications:
   or (c) be reported with an explicit repeat-run noise band. Small single-run claims are retired.
 * Remaining non-PASS in A6: `s007` (half-fixed hedge), `s013`, `s021`, `s023`, `s030` — all
   retrieval-caused except `s007`'s residual hedge.
+
+---
+
+# Phase 6 — determinism: temperature 0 does **not** fix it; removing the LLM from retrieval does
+
+## Experiment 1: two identical runs at temperature 0
+
+Reference config (A6), run twice with `--temperature 0`:
+
+| pair | identical evidence sets | identical answers | mean per-query coverage \|Δ\| | aggregate coverage |
+|---|---|---|---|---|
+| rep1 vs rep2 (**both t=0**) | **6 / 36** | **0 / 36** | **3.70 pts** (max 33) | 85.54 % vs 83.58 % |
+| A6 (t=0.3) vs rep1 | 9 / 36 | 0 / 36 | 5.09 pts | — |
+| A6 (t=0.3) vs rep2 | 5 / 36 | 0 / 36 | 4.17 pts | — |
+
+**Conclusion: `temperature=0` does not make this pipeline reproducible.** The serving stack
+(reasoning model, batching/routing) is nondeterministic, and the pipeline's `rewrite` node feeds an
+**LLM-condensed question** into retrieval, so the *evidence itself* changes between runs. That is
+why every small delta measured so far (hybrid +0.98 coverage, prompt +1 PASS) sat inside the noise.
+
+## Experiment 2: take the LLM out of the retrieval path (`--workflow no-rewrite`)
+
+The framework's workflow is config-driven (`WorkflowConfig.nodes`, dispatched by node name), so the
+`rewrite` node can be dropped without touching `quivr_core`: `START → filter_history → retrieve →
+generate_rag → END`. `retrieve` already builds its own task from the raw user message, so this is a
+pure configuration change.
+
+Verification that retrieval became deterministic:
+
+| check | result |
+|---|---|
+| pipeline retrieval vs the offline deterministic reference (raw question, BGE + FAISS + BM25 + RRF) | **36 / 36 identical, including rank order** |
+| offline reference re-run (byte comparison) | **identical hash** |
+
+## Effect on quality (A7 vs the rewrite arms)
+
+| arm | Hit@k | coverage | PASS | PARTIAL | FAIL | unsupported | latency |
+|---|---|---|---|---|---|---|---|
+| A6 (rewrite, t=0.3) | 97.06 % | 83.58 % | 31 | 5 | 0 | 0 % | 13,539 ms |
+| rep1 (rewrite, t=0) | 97.06 % | 85.54 % | — | — | — | 0 % | 13,608 ms |
+| rep2 (rewrite, t=0) | 97.06 % | 83.58 % | — | — | — | 0 % | 13,279 ms |
+| **A7 (no-rewrite, deterministic)** | **100.00 %** | **86.27 %** | **33 (91.7 %)** | 3 | **0** | **0 %** | **9,462 ms** |
+
+Removing the rewrite improves the retrieval **and** the answer quality, and cuts latency ~30 %:
+zero retrieval misses, +2.7 coverage points over A6, +2 PASS, no failures left.
+
+### Where the +2 net comes from (it is not a clean sweep)
+
+| id | change vs A6 | note |
+|---|---|---|
+| `s007` | PARTIAL → PASS | the "四月下旬/五月" hedge is gone entirely; the answer quotes the 04-20 and 05-10 anchors instead. **Borderline call** — it conveys late April via the quoted anchors rather than asserting it; a stricter grader would leave it PARTIAL (32/4/0) |
+| `s021` | PARTIAL → PASS | the April line *was* retrieved this time (chunk 83); both halves now answered verbatim |
+| `s023` | PARTIAL → PASS | the exact 2024-07-21 anchor is still missing, but other anchors let it bound the gap to "3–5 个月" (gold: 大概四个月) instead of declining |
+| `s020` | PASS → **PARTIAL** | **the measured cost of dropping the rewrite**: the answer fuses two events and dates the switch "2025 年底", contradicting the dated 2025-06 records in its own context. The trap is a corpus-internal recollection line ("去年年底…数据库也跟着放一块了"); the rewrite arm did not fall for it |
+
+Also `s030`'s cause flipped from retrieval to answer-side (its naming facts were retrieved this arm),
+and `s013` is now the **only** retrieval-caused non-PASS (Brave Search's 2025-10-11 line is absent in
+A5/A6/A7 alike; A4 passed it purely because its retrieval happened to contain that line).
+
+## What this changes methodologically
+
+1. **Retrieval A/Bs are now free and exact.** The offline probe is no longer a *prediction* of the
+   pipeline — with `no-rewrite` it reproduces it rank-for-rank. Any future retrieval change can be
+   screened offline at zero API cost and trusted.
+2. **Generation A/Bs still need repeats** (answers are not reproducible: 0/36 identical), so PASS
+   deltas must be reported with a repeat-run band.
+3. **Earlier adoptions are re-grounded on deterministic evidence.** Hybrid's effect at matched slots
+   is now a *deterministic* measurement: dense 82.4 % → hybrid 86.3 % coverage — far outside the
+   noise band. A5's adoption no longer depends on a noisy single run.
+4. **Product caveat recorded:** with a real chat history the condense step resolves pronouns
+   ("那个库" → the entity) and remains useful; the stress questions are self-contained and each
+   query runs with an empty history, so condensing only paraphrases and injects noise. The eval
+   harness therefore measures the `no-rewrite` mode, and that is stated rather than implied.
+
+## Decision
+
+* **Adopt A7 as the evaluation reference**: session units + k=10 + hybrid RRF + timeline answer
+  prompt + no-rewrite. **PASS 33/36 (91.7 %), coverage 86.27 %, Hit@10 100 %, 0 unsupported, FAIL 0,
+  9.5 s average latency.**
+* Keep all knobs defaulting to the frozen baseline values, so the original baselines stay
+  byte-identical and every experiment remains reproducible from the tag in its filename.
+* Remaining non-PASS in A7: `s013` (retrieval: Brave Search line), `s020`, `s030` (both
+  answer-side over/under-specification). The corpus is now close to its ceiling — further retrieval
+  work needs **Corpus v2** to have anything left to measure.
