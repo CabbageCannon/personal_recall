@@ -15,9 +15,11 @@ from quivr_core.rag.prompts import (
 from run_baseline import (
     CITATION_PROMPT_ADDENDUM,
     COMMITMENT_PROMPT_ADDENDUM,
+    NARROW_COMMITMENT_PROMPT_ADDENDUM,
     TIMELINE_PROMPT_ADDENDUM,
     build_cited_answer_prompt,
     build_cited_committed_answer_prompt,
+    build_cited_narrow_answer_prompt,
     build_timeline_answer_prompt,
 )
 
@@ -97,3 +99,19 @@ def test_variants_are_strictly_additive_and_independent() -> None:
     assert CITATION_PROMPT_ADDENDUM in committed
     assert COMMITMENT_PROMPT_ADDENDUM in committed
     assert len(committed) > len(cited) > len(timeline)
+
+
+def test_narrow_variant_forbids_invented_temporal_structure() -> None:
+    stock = custom_prompts[TemplatePromptName.RAG_ANSWER_PROMPT]
+
+    narrow = build_cited_narrow_answer_prompt(stock).messages[3].prompt.template
+    committed = build_cited_committed_answer_prompt(stock).messages[3].prompt.template
+
+    assert NARROW_COMMITMENT_PROMPT_ADDENDUM in narrow
+    assert CITATION_PROMPT_ADDENDUM in narrow and TIMELINE_PROMPT_ADDENDUM in narrow
+    # the broad clause's "only say the records do not show it when ... no conclusion" escape hatch
+    # is gone; the narrow one explicitly forbids inferring state changes
+    assert COMMITMENT_PROMPT_ADDENDUM not in narrow
+    assert "do NOT assert that" in narrow and "stopped" in narrow and "resumed" in narrow
+    assert "SAME person" in narrow
+    assert narrow != committed

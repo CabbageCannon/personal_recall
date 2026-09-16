@@ -161,6 +161,26 @@ Commitment rules (these take priority over the citation rules when they seem to 
 """
 
 
+#: Appended by `--answer-prompt cited-narrow`: the commitment clause with its scope restricted.
+#:
+#: A9 (`cited-committed`) proved the clause *works* (three recoveries, zero regressions, 34 PASS —
+#: the project's best) but it is not *safe*: asked how 小汪's gym habit evolved, it asserted
+#: "中断一段时间后 … 练一段—停一段—重启的循环" on exactly the window the gold marks as unestablished
+#: ("中间那段时间他停没停过，语料里没有交代"), i.e. it filled a gap with an inference. That was the
+#: project's first unsupported claim. This variant keeps the identity/equivalence licence the clause
+#: earned and forbids inventing temporal structure.
+NARROW_COMMITMENT_PROMPT_ADDENDUM = """
+Commitment rules (these take priority over the citation rules when they seem to conflict):
+- Citing is not hedging. If the cited sources together support a conclusion, state it; do not
+  retreat to "cannot determine" merely because you must cite sources for it.
+- In particular, when the question asks whether two things mentioned separately are the SAME person
+  or the SAME thing, answer yes or no from the sources, and mark which source establishes it.
+- But conclude only what the sources actually state. Unless a record says so, do NOT assert that
+  something stopped, was interrupted, resumed, or continued. Where the records are silent, say that
+  the records do not say - never fill the gap with an inference.
+"""
+
+
 def _rebuild_answer_prompt(base: object, extra: str) -> object:
     """Copy ``base``'s messages verbatim and append ``extra`` to the final human message."""
     from langchain_core.prompts import (
@@ -204,6 +224,16 @@ def build_cited_committed_answer_prompt(base: object) -> object:
     )
 
 
+def build_cited_narrow_answer_prompt(base: object) -> object:
+    """Citations plus the scope-restricted commitment clause (cite, commit on identity, never invent)."""
+    return _rebuild_answer_prompt(
+        base,
+        TIMELINE_PROMPT_ADDENDUM
+        + CITATION_PROMPT_ADDENDUM
+        + NARROW_COMMITMENT_PROMPT_ADDENDUM,
+    )
+
+
 def register_timeline_answer_prompt() -> None:
     """Install the augmented answer prompt through the framework's registration API.
 
@@ -237,6 +267,17 @@ def register_cited_committed_answer_prompt() -> None:
     )
 
 
+def register_cited_narrow_answer_prompt() -> None:
+    """Install the citation prompt plus the scope-restricted commitment clause."""
+    register_prompt(
+        TemplatePromptName.RAG_ANSWER_PROMPT,
+        build_cited_narrow_answer_prompt(
+            custom_prompts[TemplatePromptName.RAG_ANSWER_PROMPT]
+        ),
+        override=True,
+    )
+
+
 def register_answer_prompt(variant: str) -> None:
     """Dispatch on the ``--answer-prompt`` value."""
     if variant == "timeline":
@@ -245,6 +286,8 @@ def register_answer_prompt(variant: str) -> None:
         register_cited_answer_prompt()
     elif variant == "cited-committed":
         register_cited_committed_answer_prompt()
+    elif variant == "cited-narrow":
+        register_cited_narrow_answer_prompt()
     elif variant != "default":
         raise ValueError(f"unknown answer prompt variant: {variant}")
 
@@ -449,13 +492,14 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--answer-prompt",
-        choices=("default", "timeline", "cited", "cited-committed"),
+        choices=("default", "timeline", "cited", "cited-committed", "cited-narrow"),
         default="default",
         help=(
             "Answer prompt variant (default: %(default)s). 'timeline' appends explicit "
             "time-line reasoning rules targeting over-abstention and evidence misreading; "
             "'cited' adds mandatory [来源 N] citations; 'cited-committed' adds the "
-            "commitment clause (cite, don't hedge) on top."
+            "commitment clause (cite, don't hedge); 'cited-narrow' restricts that clause to "
+            "identity/equivalence conclusions and forbids inventing temporal structure."
         ),
     )
     parser.add_argument(
