@@ -24,6 +24,7 @@ from quivr_core.rag.entities.config import (
     RetrievalConfig,
 )
 from quivr_core.rag.entities.chat import ChatHistory
+from quivr_core.rag.prompts import TemplatePromptName, custom_prompts, register_prompt
 
 from memory import SessionConfig
 from memory.processor import ConversationSessionProcessor
@@ -81,6 +82,71 @@ DEFAULT_MAX_SESSION_CHARS = 900
 DEFAULT_CANDIDATE_K = 50
 #: Candidates per retriever before RRF fusion (measured plateau).
 DEFAULT_HYBRID_POOL = 30
+
+#: Frozen LLM output budget. The 'timeline' answer prompt makes the model reason much
+#: longer (measured: up to 4096 reasoning tokens), so it needs more headroom.
+MAX_OUTPUT_TOKENS = 4096
+
+#: Frozen LLM temperature. Non-zero makes even retrieval vary between runs, because the
+#: query-rewrite step is an LLM call (measured: identical retrieval configs shared only
+#: 4/36 retrieved evidence sets between runs).
+LLM_TEMPERATURE = 0.3
+
+#: Appended to the RAG answer prompt by `--answer-prompt timeline`.
+#:
+#: Targets the two generation-side failures measured on the stress run:
+#:   * over-abstention: the stock prompt says "if you cannot provide an answer ... just
+#:     answer that you don't have the answer", with no counterweight telling the model to
+#:     commit when the dated lines *do* settle the question (`s025`);
+#:   * evidence misreading: the stock prompt says to "state" contradictory information,
+#:     which makes the model report both readings instead of resolving them by date (`s007`).
+TIMELINE_PROMPT_ADDENDUM = """
+Time-line reasoning rules (apply in addition to the rules above):
+- First order the retrieved records by date and read what happened in each one.
+- If the dated records TOGETHER determine the asked fact, you MUST give that conclusion.
+  Do not answer that you cannot determine it merely because one line is vague.
+- Only if NO record touches the asked fact may you say the records do not show it.
+- If records look contradictory (one is a later recollection, another is a contemporaneous
+  statement), trust the CONTEMPORANEOUS, DATED statement and resolve the conflict yourself
+  instead of handing both readings back.
+- Distinguish "plan / intend / suggestion" from "what actually happened"; when asked about
+  an outcome, answer from what actually happened.
+- Keep the original dates when you quote a record.
+"""
+
+
+def build_timeline_answer_prompt(base: object) -> object:
+    """Return the augmented answer prompt built from ``base`` (pure, no global mutation)."""
+    from langchain_core.prompts import (
+        ChatPromptTemplate,
+        HumanMessagePromptTemplate,
+        MessagesPlaceholder,
+        SystemMessagePromptTemplate,
+    )
+
+    return ChatPromptTemplate.from_messages(
+        [
+            SystemMessagePromptTemplate.from_template(base.messages[0].prompt.template),
+            MessagesPlaceholder(variable_name="chat_history"),
+            SystemMessagePromptTemplate.from_template(base.messages[2].prompt.template),
+            HumanMessagePromptTemplate.from_template(
+                base.messages[3].prompt.template + TIMELINE_PROMPT_ADDENDUM
+            ),
+        ]
+    )
+
+
+def register_timeline_answer_prompt() -> None:
+    """Install the augmented answer prompt through the framework's registration API.
+
+    The stock messages are copied verbatim and the addendum is appended to the final
+    human message, so this stays a single-variable change.
+    """
+    register_prompt(
+        TemplatePromptName.RAG_ANSWER_PROMPT,
+        build_timeline_answer_prompt(custom_prompts[TemplatePromptName.RAG_ANSWER_PROMPT]),
+        override=True,
+    )
 
 def load_queries(queries_path: Path) -> list[dict]:
     with queries_path.open("r", encoding="utf-8") as f:
@@ -263,6 +329,35 @@ if __name__ == "__main__":
         default=DEFAULT_HYBRID_POOL,
         help="Candidates per retriever before fusion (default: %(default)s).",
     )
+    parser.add_argument(
+        "--answer-prompt",
+        choices=("default", "timeline"),
+        default="default",
+        help=(
+            "Answer prompt variant (default: %(default)s). 'timeline' appends explicit "
+            "time-line reasoning rules targeting over-abstention and evidence misreading."
+        ),
+    )
+    parser.add_argument(
+        "--max-output-tokens",
+        type=int,
+        default=MAX_OUTPUT_TOKENS,
+        help=(
+            "LLM output budget (default: %(default)s, the frozen baseline). The "
+            "'timeline' prompt reasons much longer, so it needs more headroom or the "
+            "reasoning consumes the whole budget and the answer comes back empty."
+        ),
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=LLM_TEMPERATURE,
+        help=(
+            "LLM temperature (default: %(default)s, the frozen baseline value). The "
+            "pipeline's query rewrite is an LLM call, so a non-zero temperature makes "
+            "even the retrieved evidence differ between runs."
+        ),
+    )
     args = parser.parse_args()
 
     paths = dataset_paths(args.dataset)
@@ -274,13 +369,21 @@ if __name__ == "__main__":
         and args.k == RETRIEVAL_K
         and args.rerank_model is None
         and not args.hybrid
+        and args.answer_prompt == "default"
+        and args.max_output_tokens == MAX_OUTPUT_TOKENS
+        and args.temperature == LLM_TEMPERATURE
     )
     if not is_baseline_config and not args.tag:
         parser.error(
-            "--tag is required when --chunking/--k/--rerank-model/--hybrid differ from "
-            f"the frozen baseline ({DEFAULT_CHUNKING} chunking, k={RETRIEVAL_K}, no "
-            f"reranker, dense only); this keeps {paths['results'].name} untouched."
+            "--tag is required when --chunking/--k/--rerank-model/--hybrid/--answer-prompt/"
+            "--max-output-tokens/--temperature differ from the frozen baseline "
+            f"({DEFAULT_CHUNKING} chunking, k={RETRIEVAL_K}, no reranker, dense only, "
+            f"default prompt, {MAX_OUTPUT_TOKENS} output tokens, temperature "
+            f"{LLM_TEMPERATURE}); this keeps {paths['results'].name} untouched."
         )
+
+    if args.answer_prompt == "timeline":
+        register_timeline_answer_prompt()
     if args.tag:
         results_path = BASE_DIR / f"{args.dataset}_{args.tag}_results.json"
     else:
@@ -308,6 +411,9 @@ if __name__ == "__main__":
     print(f"Hybrid (dense+BM25 RRF): {args.hybrid}")
     if args.hybrid:
         print(f"Hybrid pool: {args.hybrid_pool} per retriever -> top {args.k}")
+    print(f"Answer prompt: {args.answer_prompt}")
+    print(f"Max output tokens: {args.max_output_tokens}")
+    print(f"Temperature: {args.temperature}")
     print(f"Brain name: {brain_name}")
 
     # 1. Load gold queries
@@ -320,7 +426,8 @@ if __name__ == "__main__":
         llm_base_url="https://api.deepseek.com",
         env_variable_name="DEEPSEEK_API_KEY",
         max_context_tokens=20000,
-        max_output_tokens=4096,
+        max_output_tokens=args.max_output_tokens,
+        temperature=args.temperature,
     )
     
     llm = LLMEndpoint.from_config(llm_config)
