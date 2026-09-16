@@ -26,6 +26,12 @@ DATASET_CONFIG = {
         "summary": BASE_DIR / "stress_summary.json",
         "labels": BASE_DIR / "stress_manual_labels.json",
     },
+    "stress_v2": {
+        "queries": DATA_DIR / "stress_queries.json",
+        "results": BASE_DIR / "stress_v2_results.json",
+        "summary": BASE_DIR / "stress_v2_summary.json",
+        "labels": BASE_DIR / "stress_v2_manual_labels.json",
+    },
 }
 
 DEFAULT_DATASET = "small"

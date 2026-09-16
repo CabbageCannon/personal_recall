@@ -19,6 +19,7 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | 5     | Entity-aware recall (Person / Alias)                           | ⏸                                                                                                                           |
 | 6     | Multi-evidence / state evolution                               | ⏸                                                                                                                           |
 | 7     | Grounded generation (EvidenceItem, citation, abstention)       | ✅ done — A10 adopted: 100%% citation rate, 0 misleading, 0 unsupported, PASS 91.7%%                                         |
+| M2    | **Corpus v2: distractor pack for measurement headroom**        | ✅ done — v1 saturated (Hit@10 100%%); v2 costs −6.62 coverage pts at 2.3× the space, still 0 retrieval misses, 0 false memories |
 | 8     | Persistence (PostgreSQL + pgvector)                            | ⏸                                                                                                                           |
 | 9     | Product UI                                                     | ⏸                                                                                                                           |
 | 10    | Multimodal recall                                              | ⏸                                                                                                                           |
@@ -986,3 +987,121 @@ explicit path derived from `__file__`.
   **byte-identically** after the Core fix and the `build_workflow_config` extraction.
 * Both demo questions answered with a committed conclusion and traceable cards; `--json` emits
   `question / answer / evidence[] / retrieved / config`.
+
+---
+
+# Phase M2 — Corpus v2: a distractor pack that un-saturates the measurement (adopted as the standing harder benchmark)
+
+## Why: v1 ran out of headroom
+
+Corpus v1 saturates the retriever — **Hit@10 = 100 %**, 0 retrieval misses, evidence coverage 86.27 %.
+Every mechanism A/B measured there was fighting over the last few points, and the measured noise floor
+(Phase 5: identical configs share only 4–6/36 evidence sets) was the same size as the effects. A harder
+corpus that *keeps the gold facts untouched* is the prerequisite for any further honest retrieval work.
+
+## What was built
+
+`data/stress_chats_v2.txt` = corpus v1 **+** a distractor pack (`data/stress_v2_parts/part_{a,b,c}_*.txt`),
+merged reproducibly by `build_stress_v2.py`. The 36 gold queries are unchanged and every one of the
+114 gold evidence lines survives byte-identically.
+
+| corpus | messages | episodes | session chunks | chars |
+| ------ | -------- | -------- | -------------- | ----- |
+| v1     | 1,216    | 100      | 101            | 49,457 |
+| **v2** | **2,954** | **233** | **234** | **131,347** |
+
+The pack raises retrieval ambiguity **2.3×** without touching a tracked fact: same-entity mentions in
+other people's projects, gold-shaped sentences about different things, pronoun/omission lines, and
+near-duplicate wording across days. `validate_stress_dataset.py` passes **all 11 hard checks** on v2,
+and difficulty diagnostics show the intended pressure (e.g. `s023` now has **102** messages sharing
+4-grams with its gold text, `s027` **105**, vs single digits on v1).
+
+## Two defects caught by verification, not by reports
+
+1. **Out-of-order episodes silently destroy the corpus.** `build_sessions` consumes **file order** and
+   never re-sorts, and every calendar-day change forces a flush. One writer's draft was not
+   chronological, which fragmented its part into **293 chunks of ~43 chars** instead of 40 coherent
+   sessions. Fixed at the source and pinned by a test; the build script now fails loudly if the merged
+   file is not strictly ascending.
+2. **The pack must never restate a gold line.** A first version of the overlap check compared v1
+   against *itself* (it sliced "the pack" off the **sorted** list, re-admitting v1 episodes), reporting
+   63 phantom collisions. Re-tagged per source; real result is **0 collisions**.
+
+## The corpus change, measured at the retrieval stage the arms actually use
+
+`--workflow no-rewrite` makes retrieval deterministic, so the following is exact, not sampled:
+
+| arm | Hit@5 | strict Hit@5 | evidence coverage | zero-coverage queries |
+| --- | ----- | ------------ | ----------------- | --------------------- |
+| v1 (A10 recheck) | 34/34 | 34/34 | **0.8627** | 0 |
+| v2 (corpus v2)   | 34/34 | 34/34 | **0.7966** | 0 |
+
+**−6.62 pts coverage, and still zero retrieval misses** — the pack costs evidence *quality/precision*
+without making any question unanswerable from top-10. Paired: **6 queries worse, 1 better, 27 unchanged**.
+
+An earlier dense-only offline probe predicted a larger **−9.31 pts** (and one rank-24 miss). That probe
+is *directional* for the hybrid configuration, not exact: A10 fuses BM25, which recovers several lines
+dense ranking dropped. Recorded so the probe is not over-trusted later.
+
+## End-to-end paid A/B (identical configuration A10, only the corpus differs)
+
+| arm | PASS | PARTIAL | FAIL | PASS % | unsupported claims | insufficient evidence | citation rate | invalid citations | abstention | latency |
+| --- | ---- | ------- | ---- | ------ | ------------------ | --------------------- | ------------- | ----------------- | ---------- | ------- |
+| v1 (A10 recheck) | **33** | 3 | 0 | 91.7 % | **0/36** | 2 | 100 % | 0 | 100 % | 18.6 s |
+| v2 (corpus v2)   | **28** | 8 | 0 | 77.8 % | **0/36** | 8 | 100 % | 0 | 100 % | 19.5 s |
+
+**The v1 recheck first validates the baseline**: with the current code it reproduced the recorded A10
+result exactly — same PASS count (33), same coverage (0.8627), and **byte-identical retrieval on 36/36
+queries**. The `set_api_key` fix changed nothing behaviourally, so the v2 comparison is not confounded
+by it.
+
+Net effect of the harder corpus: **−5 PASS (33 → 28), 0 FAIL, and 0 false memories.**
+Flips: 6 losses (`s016 s021 s023 s025 s029 s030`) and 1 gain (`s020 PARTIAL → PASS`).
+
+## The finding that matters: distractor pressure costs *recall*, not *truthfulness*
+
+Every single loss is retrieval-caused — `evidence_sufficient=false` for exactly the 8 v2 PARTIALs vs 2
+in v1 — and in every one of them the model **declined or enumerated incompletely rather than inventing**:
+
+* `s025` (entity disambiguation, coverage 1.000 → **0.250**) — answers "无法判断是否为同一人" where gold
+  says 不是; the decisive 王哥→小王 link was displaced from top-10.
+* `s023` (earliest state, 0.750 → **0.250**) — correctly identifies Neon as 同学A's recommendation, then
+  refuses the ordering question; the 2024-07-21 anchor was displaced.
+* `s021` (0.500), `s029` (0.750), `s016` (0.750), `s030` — the same shape: one decisive low-frequency
+  line (a date, a one-off remark, a single reply) pushed out by topically identical distractors, and the
+  answer honestly reports the record's silence instead of fabricating.
+
+This is the corpus doing its job **and** the groundedness discipline holding under 2.3× pressure: on the
+metric this project exists for — **no evidence, no memory claim** — A10 scored 0 fabrications on both
+corpora, with 100 % abstention accuracy on the two deliberately unanswerable queries. The cost of a
+harder corpus is measured in PARTIALs, not in false memories.
+
+## Honest caveats
+
+* `s020` flipped **PARTIAL → PASS** in v2 while its coverage was unchanged (0.250) — reciprocal flips
+  exist, so a single-run ±1 PASS is still inside noise. The −5 is far outside it, but per-query flips are
+  not each individually trustworthy.
+* `s030` had **identical coverage** (0.250) in both arms yet flipped PASS → PARTIAL: equal coverage
+  masked a different *composition* of retrieved lines. Coverage is a scalar and does not capture which
+  decisive line arrived.
+* One citation-grounding error in v2 (`s025` cites a 同学A chunk for a claim about 张三's records) — the
+  only `citation_supports_claim=false` across both arms. It is a precision defect, not a false memory.
+* The pack was written by subagents under a spec and is **verified** (format, allocations, gold overlap,
+  tracked-fact scan) but is synthetic text, not real chat history.
+
+## Decision: **keep corpus v2 as the standing harder benchmark**; A10 unchanged as product reference
+
+A10 is not modified by this phase. v2 becomes the corpus future retrieval work is judged on, because it
+is the only instrument in the repo with measurable headroom left. Both corpora stay frozen:
+`stress_chats.txt` (v1, historical arms) and `stress_chats_v2.txt` (v2), with `build_stress_v2.py` able to
+regenerate v2 byte-identically from the checked-in pack.
+
+## Next step (motivated by the measured failure mode)
+
+The dominant failure is now **decisive-line displacement among near-duplicate distractors** — not a lack
+of recall, and not generation. The next mechanism to test is therefore retrieval-side **question
+decomposition / targeted anchors**: Phase 3 measured per-slice decomposition as *worse at matched
+budget*, but that negative was taken on a corpus with Hit@10 = 100 %, where the mechanism had no headroom
+to demonstrate anything. On v2 there are 8 insufficient-evidence queries to win, so it is worth re-testing
+offline (free, deterministic) before any paid arm — with the pre-registered target of converting the 6
+flips back to PASS **without** introducing a single unsupported claim.

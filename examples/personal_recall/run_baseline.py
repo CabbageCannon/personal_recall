@@ -58,6 +58,13 @@ DATASET_CONFIG = {
         "queries": DATA_DIR / "stress_queries.json",
         "results": BASE_DIR / "stress_results.json",
     },
+    # Same 36 gold queries, but the corpus also contains the distractor pack, so retrieval
+    # has to survive a much denser space of topically identical sessions.
+    "stress_v2": {
+        "corpus": DATA_DIR / "stress_chats_v2.txt",
+        "queries": DATA_DIR / "stress_queries.json",
+        "results": BASE_DIR / "stress_v2_results.json",
+    },
 }
 
 DEFAULT_DATASET = "small"

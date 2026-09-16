@@ -51,6 +51,10 @@ DATASET_CONFIG = {
         "corpus": DATA_DIR / "stress_chats.txt",
         "queries": DATA_DIR / "stress_queries.json",
     },
+    "stress_v2": {
+        "corpus": DATA_DIR / "stress_chats_v2.txt",
+        "queries": DATA_DIR / "stress_queries.json",
+    },
 }
 
 
