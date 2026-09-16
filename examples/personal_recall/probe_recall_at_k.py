@@ -59,6 +59,13 @@ def main() -> int:
     ap.add_argument("--corpus", type=Path)
     ap.add_argument("--queries", type=Path)
     ap.add_argument("--ks", type=int, nargs="+", default=list(DEFAULT_KS))
+    ap.add_argument(
+        "--chunking",
+        choices=("fixed", "session"),
+        default="fixed",
+        help="retrieval unit to sweep (default: %(default)s)",
+    )
+    ap.add_argument("--max-session-chars", type=int, default=900)
     ap.add_argument("--insufficient", type=Path, help="label diagnostics with evidence_sufficient")
     ap.add_argument("--json-out", type=Path)
     args = ap.parse_args()
@@ -69,7 +76,9 @@ def main() -> int:
     json_out = args.json_out or BASE_DIR / f"{args.dataset}_recall_at_k.json"
 
     queries = json.loads(queries_path.read_text(encoding="utf-8"))
-    chunks = load_chunks(corpus_path)
+    chunks = load_chunks(
+        corpus_path, chunking=args.chunking, max_session_chars=args.max_session_chars
+    )
     embedder = make_embedder()
     chunk_vecs = np.asarray(embedder.embed_documents(chunks), dtype=np.float32)
     question_vecs = np.asarray(

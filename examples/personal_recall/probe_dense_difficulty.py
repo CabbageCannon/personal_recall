@@ -3,18 +3,23 @@
 Answers the Phase-0.5 gate question: *is this dataset actually hard for the frozen
 baseline retriever?* It reproduces the baseline's retrieval stage exactly:
 
-    recursive_character_splitter(400 / 100)  -> chunks
-    BGE-small-zh-v1.5 (local, normalized)    -> embeddings
-    cosine Top-K                             -> retrieved evidence
-    eval_utils.evidence_matches_source       -> hit / coverage
+    chunking (fixed 400/100, or conversation sessions)  -> chunks
+    BGE-small-zh-v1.5 (local, normalized)               -> embeddings
+    cosine Top-K                                        -> retrieved evidence
+    eval_utils.evidence_matches_source                  -> hit / coverage
 
 The only thing it does NOT reproduce is the LLM generation step and any query
 rewrite the LangGraph flow performs, so treat it as an upper bound on retrieval
 quality: if the raw question already retrieves the gold evidence at rank 1, the
 paid baseline will very likely pass too.
 
+``--chunking session`` swaps the retrieval unit to conversation sessions
+(``memory/``), which is the Phase 1 A/B: same corpus, same queries, same embedder,
+same k — only the retrieval unit changes.
+
 Usage:
     python probe_dense_difficulty.py                     # stress dataset defaults
+    python probe_dense_difficulty.py --chunking session --max-session-chars 900
     python probe_dense_difficulty.py --corpus data/chats.txt --queries data/queries.json
 """
 
@@ -24,6 +29,7 @@ import argparse
 import json
 import statistics
 from collections import defaultdict
+from datetime import timedelta
 from pathlib import Path
 
 import dotenv
@@ -48,15 +54,32 @@ DATASET_CONFIG = {
 }
 
 
-def load_chunks(corpus_path: Path) -> list[str]:
-    """Chunk the corpus with the EXACT baseline splitter, imported from quivr_core."""
+def load_chunks(
+    corpus_path: Path,
+    chunking: str = "fixed",
+    max_session_chars: int = 900,
+    max_gap_hours: float = 6.0,
+) -> list[str]:
+    """Build the retrieval units either the baseline way or as conversation sessions."""
+    text = corpus_path.read_text(encoding="utf-8")
+
+    if chunking == "session":
+        from memory import SessionConfig, build_sessions, parse_txt_events
+
+        parsed = parse_txt_events(text, conversation_id=corpus_path.stem)
+        sessions = build_sessions(
+            parsed.events,
+            config=SessionConfig(max_gap=timedelta(hours=max_gap_hours), max_chars=max_session_chars),
+            conversation_id=corpus_path.stem,
+        )
+        return [s.text for s in sessions]
+
     from langchain_core.documents import Document
 
     from quivr_core.processor.implementations.simple_txt_processor import (
         recursive_character_splitter,
     )
 
-    text = corpus_path.read_text(encoding="utf-8")
     docs = recursive_character_splitter(
         Document(page_content=text), CHUNK_SIZE, CHUNK_OVERLAP
     )
@@ -101,6 +124,14 @@ def main() -> int:
     ap.add_argument("--corpus", type=Path)
     ap.add_argument("--queries", type=Path)
     ap.add_argument("--k", type=int, default=5)
+    ap.add_argument(
+        "--chunking",
+        choices=("fixed", "session"),
+        default="fixed",
+        help="retrieval unit: fixed 400/100 character slices (baseline) or conversation sessions",
+    )
+    ap.add_argument("--max-session-chars", type=int, default=900)
+    ap.add_argument("--max-gap-hours", type=float, default=6.0)
     ap.add_argument("--json-out", type=Path)
     args = ap.parse_args()
 
@@ -110,10 +141,22 @@ def main() -> int:
     json_out = args.json_out or BASE_DIR / f"{args.dataset}_dense_probe.json"
 
     queries = json.loads(queries_path.read_text(encoding="utf-8"))
-    chunk_texts = load_chunks(corpus_path)
+    chunk_texts = load_chunks(
+        corpus_path,
+        chunking=args.chunking,
+        max_session_chars=args.max_session_chars,
+        max_gap_hours=args.max_gap_hours,
+    )
     print(f"corpus  : {corpus_path}")
     print(f"queries : {queries_path}")
-    print(f"chunks  : {len(chunk_texts)} (chunk_size={CHUNK_SIZE}, overlap={CHUNK_OVERLAP})")
+    if args.chunking == "session":
+        print(
+            f"chunking: conversation sessions (max_gap={args.max_gap_hours}h, "
+            f"max_chars={args.max_session_chars})"
+        )
+    else:
+        print(f"chunking: fixed (chunk_size={CHUNK_SIZE}, overlap={CHUNK_OVERLAP})")
+    print(f"chunks  : {len(chunk_texts)}")
 
     embedder = make_embedder()
     chunk_vecs = np.asarray(embedder.embed_documents(chunk_texts), dtype=np.float32)
@@ -250,6 +293,8 @@ def main() -> int:
                 "corpus": str(corpus_path),
                 "queries": str(queries_path),
                 "chunks": len(chunk_texts),
+                "chunking": args.chunking,
+                "max_session_chars": args.max_session_chars if args.chunking == "session" else None,
                 "k": args.k,
                 "totals": {
                     "answerable": len(answerable_rows),
