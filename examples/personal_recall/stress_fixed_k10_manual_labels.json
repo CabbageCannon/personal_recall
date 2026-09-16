@@ -1,0 +1,182 @@
+[
+  {
+    "query_id": "s001",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s002",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s003",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s004",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s005",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s006",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s007",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s008",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s009",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s010",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s011",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s012",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s013",
+    "label": "PARTIAL",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s014",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s015",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s016",
+    "label": "FAIL",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s017",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s018",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s019",
+    "label": "PARTIAL",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s020",
+    "label": "PARTIAL",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s021",
+    "label": "PARTIAL",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s022",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s023",
+    "label": "PARTIAL",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s024",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s025",
+    "label": "FAIL",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s026",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s027",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s028",
+    "label": "PARTIAL",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s029",
+    "label": "FAIL",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s030",
+    "label": "PARTIAL",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s031",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s032",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s033",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s034",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s035",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "s036",
+    "label": "PASS",
+    "unsupported_claim": false
+  }
+]

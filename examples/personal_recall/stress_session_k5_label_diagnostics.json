@@ -1,0 +1,362 @@
+[
+  {
+    "query_id": "s001",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "Chunk 17 carries both gold lines and the answer restates 第三个. Core claim agrees exactly with expected_answer.",
+    "quoted_answer_span": "你们组是**第三个**上台讲的。",
+    "quoted_source_span": "chunk 17: “[2024-10-20 15:18] 我: 第三个，前面两组都超时了，我们讲得比较快”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s002",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "Chunk 64 holds the gold line verbatim; the answer lists exactly FIFO / LRU / Clock.",
+    "quoted_answer_span": "页面置换那一块一共过了 **3 个算法**：FIFO、LRU、Clock",
+    "quoted_source_span": "chunk 64: “[2025-12-02 21:18] 我: 页面置换这块，FIFO、LRU、Clock 三个我都过了一遍”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s003",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "Both gold lines are retrieved this time (chunks 96 and 97) and the answer reproduces the outcome: one failed, the other told to wait for a second-round notice. Reading 让等二面通知 as 通过了初面 is a direct entailment of that same line, not an invented fact.",
+    "quoted_answer_span": "一家未通过，另一家还在等二面通知，尚未有最终结果。",
+    "quoted_source_span": "chunk 97: “[2026-07-05 20:13] 我: 一家挂了，另一家说让等二面通知”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s004",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "Chunk 74 contains the gold line naming SearXNG; the answer names it.",
+    "quoted_answer_span": "你年初自己搭建的聚合搜索叫 **SearXNG**。",
+    "quoted_source_span": "chunk 74: “[2026-01-19 22:18] 我: 自己搭了个 SearXNG，试了两周，维护太麻烦”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s005",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "Chunk 35 contains the gold line; the answer reproduces the tool and the 规则文件→扫描器 mechanism.",
+    "quoted_answer_span": "你打算使用 **Flex** 那套工具来生成扫描器：先写规则文件，再让它生成扫描器。",
+    "quoted_source_span": "chunk 35: “[2025-04-20 15:34] 我: 我打算用 Flex 那套，先写规则文件，让它生成扫描器”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s006",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "The question asks why the first frontend host was dropped; chunk 100 states the same reason (前端最早那家国内访问不行，后来换了个托管的) and the answer repeats it verbatim. The 白屏/等半天 detail in the gold lines is extra colour and was not needed to answer why, which is how the baseline graded this query too.",
+    "quoted_answer_span": "最早给前端找的那个托管后来不用了，是因为**国内访问不行**。",
+    "quoted_source_span": "chunk 100: “[2026-08-20 20:15] 我: 说来话长，前端最早那家国内访问不行，后来换了个托管的，慢是慢但没再动”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s007",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "Both asked parts are answered: the April target (chunk 72 学长说四月就能开始投了; the verbatim 2026-03-18 gold line is absent) and the slippage cause 简历改了好几版，一直不满意 (chunk 90), with the actual start placed at 四月底 from 我投出去快两周了.",
+    "quoted_answer_span": "本来按计划，**实习投递应该在四月开始**……后来拖下来的原因是：**简历改了好几版，一直不满意**……说明实际开始投递大约在四月底。",
+    "quoted_source_span": "chunk 72: “[2025-12-31 21:20] 我: 明年我想早点启动，学长说四月就能开始投了”; chunk 90: “[2026-05-17 15:57] 我: 是我拖了，中间简历改了好几版，一直不满意”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s008",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "Chunks 60 and 86 carry both gold lines; the answer says 不是他自己挑的 and quotes 学校给的 / 学院统一配的 MySQL.",
+    "quoted_answer_span": "不是。小汪毕设用的数据库是**学校给的 MySQL**，也是**学院统一配的**，不是他自己挑的。",
+    "quoted_source_span": "chunk 60: “[2025-11-08 19:40] 小汪: 我最近在弄毕设，数据库就用学校给的 MySQL”; chunk 86: “[2026-04-28 20:41] 小汪: 学校给的一套模板，数据库也是学院统一配的 MySQL”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s009",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "Chunk 80 contains the gold line 每个项目写清楚背景、你负责哪块、最后做出来什么结果 verbatim and the answer lists all three. The added 部署和数据库细节 point is also traceable to chunk 80 (写，面试官很爱问这个，尤其是你自己踩过坑的地方).",
+    "quoted_answer_span": "每个项目要写清楚——**背景**／**你负责哪块**／**最后做出来什么结果**",
+    "quoted_source_span": "chunk 80: “[2026-03-10 19:57] 学长: 每个项目写清楚背景、你负责哪块、最后做出来什么结果”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s010",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "The answer gives both directions — 检索 and 多模态 — which is the gold core, and the 2025-11-26 line is now retrieved (chunk 63). The only unmatched gold line (2026-02-20 方向定了再定名) is supplementary and 题目未定 is already in chunks 73/79.",
+    "quoted_answer_span": "导师建议你的毕业设计可以先往 **检索** 方向考虑，**多模态** 也可以一并看看",
+    "quoted_source_span": "chunk 63: “[2025-11-26 20:30] 导师: 选题方向你可以先往检索或者多模态那边想”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s011",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "Chunks 7 and 34 give the 2024-05-02 trip and the 去年五一去的长沙 back-reference; the answer states 2024年的五一假期.",
+    "quoted_answer_span": "你们一起去长沙是在 **2024年的五一假期**。",
+    "quoted_source_span": "chunk 34: “[2025-04-02 22:25] 我: 对，去年五一去的长沙，来回票都差点没买上”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s012",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "Chunk 92 holds the gold line and the answer gives 2026 年 6 月 18 日上午.",
+    "quoted_answer_span": "你的毕业答辩定在 **2026 年 6 月 18 日上午**。",
+    "quoted_source_span": "chunk 92: “[2026-06-01 16:20] 导师: 答辩时间定了，六月十八号上午，你准备一下”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s013",
+    "label": "PARTIAL",
+    "unsupported_claim": false,
+    "evidence_sufficient": false,
+    "reason": "Two-part question; the 为什么又用回原来的 half is right (SearXNG 养不动/维护麻烦 → 回到最早接的那个, chunks 74/100) and Tavily is named as the endpoint, but 换过哪几家 is answered with only two services — Brave Search (2025-10) is missing, as is the explicit 搜索还是回到 Tavily 了 line. Neither is present in the five chunks, so the second half is under-answered rather than wrong.",
+    "quoted_answer_span": "根据提供的聊天记录，你用于检索的搜索服务主要换过 **两家**：**Tavily** … **SearXNG** … 最后又用回最初那家的原因：**SearXNG 自建“养不动”，维护太麻烦、更费时间**",
+    "quoted_source_span": "chunk 74: “自己搭了个 SearXNG，试了两周，维护太麻烦”; chunk 100: “养不动，后来还是用回最早接的那个”; no chunk contains “[2025-10-11 21:02] 我: Brave Search 的中文结果不太行，先放一边”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s014",
+    "label": "PARTIAL",
+    "unsupported_claim": false,
+    "evidence_sufficient": false,
+    "reason": "Half answered: 没有彻底解决 is correct from chunks 51 and 100, but the interval half is declined as 无法精确计算 because the 2024-09-08 Vercel anchor that fixed the ~10-month gap is absent (only the later 去年就试了 recall in chunk 48).",
+    "quoted_answer_span": "因此，**无法精确计算中间隔了多久**……换完之后，国内访问问题 **没有彻底解决**……所以只是比之前可用/稳定了一些，并未彻底解决国内访问慢或不稳的问题。",
+    "quoted_source_span": "chunk 48: “试过，去年就试了，国内访问不太稳，后来就搁那了”; chunk 51: “国内访问还是偶尔不稳，晚上有一阵特别慢”; the 2024-09-08 line is absent",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s015",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "Both endpoints are in the retrieved chunks (chunk 66 基本一秒内就回来; chunk 68 迁移前后第一次请求的时间…大概是十几秒到一秒) and the answer states 从十几秒降到一秒内, matching the gold delta. The baseline was only PARTIAL because its context lacked those lines.",
+    "quoted_answer_span": "后端搬家前后，第一个请求的等待时间大概从**十几秒**降到**一秒内**，相差约**十几秒**。",
+    "quoted_source_span": "chunk 68: “[2025-12-22 20:34] 我: 那我把迁移前后第一次请求的时间写上去，大概是十几秒到一秒”; chunk 66: “[2025-12-18 21:32] 我: 快多了，第一个请求不用再等，基本一秒内就回来”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s016",
+    "label": "PARTIAL",
+    "unsupported_claim": false,
+    "evidence_sufficient": false,
+    "reason": "Timeline only half reconstructed: the 2024-06 天天泡健身房 stage is missing and the answer says 无法确认 2024 年的情况 (that line is in no retrieved chunk). Unlike the baseline answer it does not assert a 2025 start, and the stages it does give (2025-02/2025-06/2026-02) match the corpus, so this is a missing-stage hedge rather than a contradiction.",
+    "quoted_answer_span": "根据提供的聊天记录，**无法确认 2024 年的情况**；最早相关记录是 **2025-02-14**……记录中存在时间线缺口",
+    "quoted_source_span": "corpus [2024-06-15 20:51] 小汪: 行，我最近天天泡健身房（absent from all five chunks）; chunks 30/45/76 carry only the 2025-02, 2025-06 and 2026-02 stages",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s017",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "Both halves of the gold are answered: no firm yes and no firm no (先别定 / 还没想好要不要跑这一趟) and the plan never landed (一直没回他 / 后来不是没定嘛 / 深圳那事就搁下了). All four supporting lines are present across chunks 20, 22 and 27.",
+    "quoted_answer_span": "你当时没答应，到最后也没给小王一个明确准话，深圳元旦之行没有定下来。",
+    "quoted_source_span": "chunk 20: “先别定，我还不知道元旦有没有课程作业”; chunk 22: “还没定，上周说的那事我一直没回他”; chunk 27: “嗯，小王提过，后来不是没定嘛”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s018",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "Full agreement with the gold: housing first, tickets still in official 候补 with 几十个人 ahead, the accelerator tried and dropped, 剩下的就看运气/假期一开始就走, and the trip did happen (重庆回来了). All four gold lines are in chunks 54/55/56.",
+    "quoted_answer_span": "**先处理的是住宿**……你在官方候补，前面还有几十人；不用加速，只等官方候补；并打算假期一开始就走，晚一两天也行。",
+    "quoted_source_span": "chunk 55: “[2025-09-28 22:28] 我: 我把住宿先订了，可以免费取消的那种” + “[22:22] 我试了一下那个，不靠谱，已经不用了，就等官方候补”; chunk 56: “[2025-10-06 21:40] 我: 重庆回来了，人真的多”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s019",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "Both parts correct: actual start inferred as 4月底 from 我投出去快两周了 (chunk 89) and the comparison anchored on the April target in chunk 72 (学长说四月就能开始投了), concluding 比4月晚一点…不是整整一个月 — the gold conclusion. The 5月 reading is raised and then explicitly rejected, so it is not answered as the fact.",
+    "quoted_answer_span": "你是在 **4月底** 开始投，和学长说的 **4月** 基本同月，只晚约几天到两周……结论偏向 **4月底开始投，比4月晚一点，不是整整一个月**。",
+    "quoted_source_span": "chunk 72: “明年我想早点启动，学长说四月就能开始投了”; chunk 89: “[2026-05-10 23:17] 我: 我投出去快两周了，只收到一封自动回复的邮件”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s020",
+    "label": "PARTIAL",
+    "unsupported_claim": false,
+    "evidence_sufficient": false,
+    "reason": "The chain is partly recovered — Supabase as the origin and the 免费层快满了 cause (chunks 78/44), Neon tested but never used in production (chunk 78) — but the destination is left unnamed (当前正式库的具体名称在提供的上下文中没有出现) because Railway/PostgreSQL appears in none of the five chunks. The baseline refused the whole question; this answer at least names the origin and the switch.",
+    "quoted_answer_span": "**Supabase → 当前未具名托管库** …… 当前正式库的**具体名称在提供的上下文中没有出现**，只能确认它是“后来从 Supabase 迁走那个”。",
+    "quoted_source_span": "chunk 78: “后来从 Supabase 迁走那个，一直用到现在”; chunk 44: “那个免费层本来也快满了，早晚要动”; no chunk contains “Railway 的 PostgreSQL 已经建好了”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s021",
+    "label": "PARTIAL",
+    "unsupported_claim": false,
+    "evidence_sufficient": false,
+    "reason": "Two-part question: the June half is fully right and quoted from chunk 93 (抄了，握手一直不成功…WireGuard 我配了一晚上没配通，还是回去用 Tailscale 了) with no false success claim as in the baseline, but the April reply is declined (四月的直接对话：提供的记录里没有) because the 2026-04-06 我还是懒得折腾 line was not retrieved.",
+    "quoted_answer_span": "六月自己上手时：卡在 **WireGuard 握手一直不成功**，日志也看不出哪里错……最后收场：再试最后一次后放弃，回去继续用 **Tailscale**。",
+    "quoted_source_span": "chunk 93: “[2026-06-11 22:47] 我: WireGuard 我配了一晚上没配通，还是回去用 Tailscale 了”; the 2026-04-06 我还是懒得折腾 line is absent",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s022",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "Matches the gold current state: still running (我最近还在跑操场) and not using the gym (学校那个要预约，我一般都懒得去). Chunk 76 carries both lines; the older 2025-11/2025-12 statements are absent but the question asks the present state, as in the baseline grading.",
+    "quoted_answer_span": "**锻炼状态**：你最近还在**跑操场** …… **结论**：目前你**没有去健身房**",
+    "quoted_source_span": "chunk 76: “[2026-02-14 20:19] 我: 有是有，但要预约，我一般都懒得去” + “[20:24] 我: 我最近还在跑操场，先这样吧”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s023",
+    "label": "PARTIAL",
+    "unsupported_claim": false,
+    "evidence_sufficient": false,
+    "reason": "The which-came-first half is right (Supabase first, registered the same night — chunk 3) and Neon is correctly reported as never formally used, but the interval is declined (间隔无法确定) because the 2024-07-21 Neon recommendation line that anchors the ~四个月 gap is in none of the chunks.",
+    "quoted_answer_span": "**先用起来的是：小王推荐的 Supabase** …… 两者开始使用时间的**间隔无法确定**。",
+    "quoted_source_span": "chunk 3: “[2024-03-16 20:21] 我: 那我今晚注册一个，先建两张表试试”; the 2024-07-21 “[15:10] 同学A: 那你看看 Neon，也是 PostgreSQL” line is absent",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s024",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "Names Render, the 2025-12-14 switch to Railway (chunk 65) and the absence of any intermediate change (chunk 26 后端没动, chunk 59 后端还在原来那个平台). The 2024-03 first-use line is absent but Render's identity is carried by chunk 65.",
+    "quoted_answer_span": "我最早放后端的平台是 **Render** …… **一直用到**：2025-12-14，当天把后端从 **Render** 迁到了 **Railway**。**中间有没有动过**：没有看到更换或迁移",
+    "quoted_source_span": "chunk 65: “[2025-12-14 20:31] 我: 后端也从 Render 迁到 Railway 了”; chunk 26: “后端没动”; chunk 59: “后端还在原来那个平台”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s025",
+    "label": "FAIL",
+    "unsupported_claim": false,
+    "evidence_sufficient": false,
+    "reason": "Refuses the disambiguation (无法确认…没有足够信息判断“王哥”和“小汪”是否为同一个人) although the corpus answers it: 王哥 is 小王 (2025-01-14 我: 嗯，小王提过，后来不是没定嘛) and the MySQL thesis student is 小汪 — two different people. Neither 王哥 line was retrieved, so this is a retrieval-caused refusal, as in the baseline.",
+    "quoted_answer_span": "无法确认。提供的聊天记录中，张三没有提到“王哥”……因此没有足够信息判断“王哥”和“小汪”是否为同一个人。",
+    "quoted_source_span": "corpus [2025-01-14 23:20] 张三: 王哥前两天不是还说要去深圳吗 / [23:21] 我: 嗯，小王提过，后来不是没定嘛（absent from all five chunks）",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s026",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "Classification matches the gold: Vercel and Cloudflare Pages in one class (chunk 48 names both) and Tunnel in the other, with 一个是部署网页…我说的是我家里那台 NAS 从外面连回去那种 in chunk 50.",
+    "quoted_answer_span": "同一类的是：**前端最早试用的 Vercel** 和 **后来换上的 Cloudflare Pages** …… 室友提到的 **Cloudflare Tunnel** 属于**内网穿透/远程访问**",
+    "quoted_source_span": "chunk 48: “你之前不是说试过 Vercel 吗 / 试过，去年就试了”; chunk 50: “Pages，这次不是内网穿透” + “我说的是我家里那台 NAS，从外面连回去那种”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s027",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "The question asks how 小王 asked and how the user replied; both turns are quoted verbatim from chunk 88, exactly as in the gold. The absent 2024-07-21 同学A recommendation is extra context the question does not ask for.",
+    "quoted_answer_span": "小王后来问的是：**“Neon 当年是我推荐给你的还是别人，我都忘了”**。我当时的回复是：**“不是你，是另一个同学，他当时说也是 PG 的。”**",
+    "quoted_source_span": "chunk 88: “[2026-05-02 10:19] 小王: Neon 当年是我推荐给你的还是别人，我都忘了” + “[10:21] 我: 不是你，是另一个同学，他当时说也是 PG 的”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s028",
+    "label": "PARTIAL",
+    "unsupported_claim": false,
+    "evidence_sufficient": false,
+    "reason": "Part 1 is right but thinner than the gold (测试过连接 vs 只做到跑通连接就收手) and part 2 — whether the account was kept — is declined (提供的聊天记录里没有提到…因此无法确认). The 2024-08-04 连上就收手了 and 2024-11-19 留着，账号还在 lines are in none of the five chunks.",
+    "quoted_answer_span": "当时你具体做到：**测试过连接** …… 账号是否后来还留着：提供的聊天记录里**没有提到**……因此无法确认。",
+    "quoted_source_span": "chunk 84: “就 2024 年那个同学推荐给我的，我一直没正式用上”; the 2024-11-19 “[22:32] 我: 留着，账号还在，就是一直没动过” line is absent",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s029",
+    "label": "FAIL",
+    "unsupported_claim": false,
+    "evidence_sufficient": false,
+    "reason": "The answer asserts the opposite of the gold: 没有试过…也就没有试用结果, while the corpus records the June attempt (2026-06-11 抄了，握手一直不成功 / WireGuard 我配了一晚上没配通，还是回去用 Tailscale 了). The April exchange (chunk 83) and the August recall (chunk 100) are present, so the wrong conclusion comes from the missing June chunk; following the baseline treatment of this same claim, an unsupported negative conclusion drawn from silence is not additionally flagged as unsupported_claim.",
+    "quoted_answer_span": "**没有试过。** …… 所以：**你没试过阿伟那套新方案，也就没有试用结果。**",
+    "quoted_source_span": "chunk 83 carries the April offer (我还是懒得折腾) and chunk 100 the August recall; the 2026-06-11 22:47 line is absent",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s030",
+    "label": "PARTIAL",
+    "unsupported_claim": false,
+    "evidence_sufficient": false,
+    "reason": "Half plus: the backend half is right (Render, address still up, no change — chunk 19), but the database identity is left open (具体名称在记录中未明确) though the gold pins it to Supabase, and the 2024-08-06 env-var line, the 2024-10-20 答辩 line and the 2024-11-19 Neon-shelved line are all absent from the chunks.",
+    "quoted_answer_span": "**后端**：处于 Render 上可访问、未提及更换或下线的状态。 **数据库**：处于继续沿用现有数据库、未做正式迁移/换库的状态，具体名称在记录中未明确。",
+    "quoted_source_span": "chunk 19: “[2024-11-25 20:19] 我: Render 上那个地址还在，能打开，就是界面比较糙”; chunk 24: “那个库我打算明年再认真选一次”; the Supabase/Neon 2024 lines are absent",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s031",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "The core question (到底有没有真的上线) is answered correctly — 没有真正上线，直接在机房演示 — and the 收尾 quote 反正我也不用上线，交上去能演示就行 is in chunk 86, corroborated by chunk 92 (我系统还没部署呢). The 论文没写 stage is not mentioned but the question asks how it ended and whether it shipped, as in the baseline grading.",
+    "quoted_answer_span": "所以，**小汪的系统没有真正上线**。他的收尾方式是：不部署到线上，直接在机房做演示。",
+    "quoted_source_span": "chunk 86: “[2026-04-28 20:47] 小汪: 反正我也不用上线，交上去能演示就行”; chunk 92: “[2026-06-01 21:20] 小汪: 我系统还没部署呢”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s032",
+    "label": "FAIL",
+    "unsupported_claim": false,
+    "evidence_sufficient": false,
+    "reason": "Outright refusal (无法判断…不能确认二者是不是同一个) although the corpus answers it: 本地原型我就直接用 SQLite，不上云 (present as chunk 52) plus 2026-08-10 本地用文件型的那个 and 2026-05-02 轻量的那个, neither of which was retrieved. Unlike the baseline, whose chunks contained the file-based local-store lines, this run's context held only the prototype half, so the refusal is retrieval-caused.",
+    "quoted_answer_span": "**无法判断。** …… 因此，仅凭现有上下文，不能确认二者是不是同一个。",
+    "quoted_source_span": "chunk 52: “[2025-09-03 22:05] 我: 本地原型我就直接用 SQLite，不上云”; the 2026-08-10 “[21:23] 我: 本地用文件型的那个，随时能删” line is absent",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s033",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "Matches the gold fully: 多模态 is the excluded direction with the reason quoted (检索我比较熟，多模态我基本没碰过) and March is still 检索 (chunk 79 只说往检索方向想). The answer also explicitly corrects the 检索/推荐 confusion that made the baseline FAIL ('检索还是推荐'只是小王在问).",
+    "quoted_answer_span": "你排除/先放下的是：**多模态**。原因：你说“**检索我比较熟，多模态我基本没碰过**” …… 到 **2026 年 3 月**，你仍在提/围绕的是：**检索**。",
+    "quoted_source_span": "chunk 63: “[2025-11-26 20:33] 我: 检索我比较熟，多模态我基本没碰过”; chunk 79: “[2026-03-05 21:10] 我: 导师那边题目还没定，只说往检索方向想”",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s034",
+    "label": "PARTIAL",
+    "unsupported_claim": false,
+    "evidence_sufficient": false,
+    "reason": "The yes/no verdict agrees with the gold (不是…没有在正式项目中使用它), but the answer identifies the 2024-recommended PostgreSQL library as Neon — the 同学A recommendation — instead of 小王's Supabase, adding a caveat that records attribute Neon to 同学A; the Railway destination is also absent. It does correctly report Neon never reached production.",
+    "quoted_answer_span": "**不是，你现在没有在正式项目中使用它。** …… 记录里 2024 年推荐 Neon 的人写的是“同学/同学A”，并没有明确写成“小王”",
+    "quoted_source_span": "chunk 78: “之前测试过连接，但没专门拿它做正式项目” + “后来从 Supabase 迁走那个，一直用到现在”; the 2024-03-16 Supabase and Railway lines are absent",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s035",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "Unanswerable query; the answer declines to assert any title (无法确定导师最终为你确定的毕业设计题目名称) and reports 检索 only as a direction, never as the title. No thesis title is invented, so PASS per the s035 rule.",
+    "quoted_answer_span": "根据提供的聊天记录，**无法确定导师最终为你确定的毕业设计题目名称** …… 因此，现有上下文没有给出最终确定的毕设题目。",
+    "quoted_source_span": "chunk 73: “还是先往检索那边靠，多模态也可以一并看看” (a direction, not a title)",
+    "suspected_gold_error": false
+  },
+  {
+    "query_id": "s036",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "reason": "Unanswerable query; the answer declines (我无法从提供的上下文中找到该店名称) and names no shop, correctly noting the invitation mentions no restaurant. It also does not present the food type (烧烤) or any direction as the answer.",
+    "quoted_answer_span": "因此，我无法从提供的上下文中找到该店名称。",
+    "quoted_source_span": "chunk 76: “[2026-02-14 20:27] 小汪: 行，那你毕设弄完记得来找我玩，顺便吃个饭” (no shop named)",
+    "suspected_gold_error": false
+  }
+]
