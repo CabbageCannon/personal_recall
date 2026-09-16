@@ -358,3 +358,30 @@ def _define_custom_prompts() -> dict[TemplatePromptName, BasePromptTemplate]:
 _templ_registry: dict[TemplatePromptName, BasePromptTemplate] = _define_custom_prompts()
 
 custom_prompts = types.MappingProxyType(_templ_registry)
+
+
+def register_prompt(
+    name: TemplatePromptName,
+    prompt: BasePromptTemplate,
+    override: bool = False,
+) -> None:
+    """Register a prompt in the framework prompt registry.
+
+    ``custom_prompts`` is exposed as a read-only view, so without this function the only
+    way to use a custom prompt would be to write into the private backing dict. This
+    mirrors ``register_processor`` for processors: additive by default, explicit
+    ``override=True`` to replace a built-in prompt.
+
+    Args:
+        name: which prompt slot to register.
+        prompt: the prompt template to install.
+        override: set to True to replace an already-registered prompt.
+
+    Raises:
+        ValueError: if the slot is taken and ``override`` is False.
+    """
+    if name in _templ_registry and not override:
+        raise ValueError(
+            f"Prompt '{name.value}' is already registered; pass override=True to replace it"
+        )
+    _templ_registry[name] = prompt
