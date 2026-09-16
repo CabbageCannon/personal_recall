@@ -7,22 +7,22 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 
 ## Phase map
 
-| Phase | Scope | Status |
-|---|---|---|
-| 0 | Small-corpus baseline (unmodified Quivr Dense RAG) | ✅ done |
-| 0.5 | Recall Stress Corpus + Stress Baseline + dataset audit | ✅ done — baseline visibly fails, failure attributed to retrieval |
-| 1 | MemoryEvent / Source Adapter + conversation-aware chunking | ✅ done — kept: additive on top of the window control |
-| 2 | Retrieval trace / Evidence representation on structured memory | ⏸ (reranking evaluated in round 2: negative, not adopted) |
-| 3 | Hybrid retrieval (BM25 + dense + RRF) | ✅ done — adopted as A5 (+1 PASS, +0.98 coverage); reranker measured negative |
-| M1 | **Methodology: reproducibility protocol** | ✅ done — temperature 0 is *not* reproducible; removing the LLM rewrite makes retrieval deterministic and offline-exact (A7) |
-| 4 | Temporal retrieval | ⏸ |
-| 5 | Entity-aware recall (Person / Alias) | ⏸ |
-| 6 | Multi-evidence / state evolution | ⏸ |
-| 7 | Grounded generation (EvidenceItem, citation, abstention) | 🔄 evidence model + citations built; 0 misleading citations, 100%% citation rate; 2 hedge losses pending a commitment clause |
-| 8 | Persistence (PostgreSQL + pgvector) | ⏸ |
-| 9 | Product UI | ⏸ |
-| 10 | Multimodal recall | ⏸ |
-| 11 | Optional skills / agent layer | ⏸ |
+| Phase | Scope                                                          | Status                                                                                                                      |
+| ----- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 0     | Small-corpus baseline (unmodified Quivr Dense RAG)             | ✅ done                                                                                                                      |
+| 0.5   | Recall Stress Corpus + Stress Baseline + dataset audit         | ✅ done — baseline visibly fails, failure attributed to retrieval                                                            |
+| 1     | MemoryEvent / Source Adapter + conversation-aware chunking     | ✅ done — kept: additive on top of the window control                                                                        |
+| 2     | Retrieval trace / Evidence representation on structured memory | ⏸ (reranking evaluated in round 2: negative, not adopted)                                                                   |
+| 3     | Hybrid retrieval (BM25 + dense + RRF)                          | ✅ done — adopted as A5 (+1 PASS, +0.98 coverage); reranker measured negative                                                |
+| M1    | **Methodology: reproducibility protocol**                      | ✅ done — temperature 0 is *not* reproducible; removing the LLM rewrite makes retrieval deterministic and offline-exact (A7) |
+| 4     | Temporal retrieval                                             | ⏸                                                                                                                           |
+| 5     | Entity-aware recall (Person / Alias)                           | ⏸                                                                                                                           |
+| 6     | Multi-evidence / state evolution                               | ⏸                                                                                                                           |
+| 7     | Grounded generation (EvidenceItem, citation, abstention)       | ✅ done — A10 adopted: 100%% citation rate, 0 misleading, 0 unsupported, PASS 91.7%%                                         |
+| 8     | Persistence (PostgreSQL + pgvector)                            | ⏸                                                                                                                           |
+| 9     | Product UI                                                     | ⏸                                                                                                                           |
+| 10    | Multimodal recall                                              | ⏸                                                                                                                           |
+| 11    | Optional skills / agent layer                                  | ⏸                                                                                                                           |
 
 Phase order after 0.5 is **evidence-driven**: the stress baseline decides the first real change.
 
@@ -43,17 +43,17 @@ exact component is the experiment.
 
 ## Phase 0 result (real, from `baseline_summary.json`, 34 queries)
 
-| Metric | Value |
-|---|---|
-| Answerable / unanswerable | 30 / 4 |
-| Retrieval Hit@5 | 30/30 = **1.000** |
-| Strict Hit@5 | 29/30 = 0.967 |
-| Avg evidence coverage | 0.965 |
-| Avg strict coverage | 0.937 |
-| Weighted coverage | 0.961 |
-| Answer PASS / PARTIAL / FAIL | 34 / 0 / 0 |
-| Unsupported claim rate | 0/34 = **0.0** |
-| Latency avg / min / max (ms) | 7507.6 / 3618.7 / 15242.1 |
+| Metric                          | Value                      |
+| ------------------------------- | -------------------------- |
+| Answerable / unanswerable       | 30 / 4                     |
+| Retrieval Hit@5                 | 30/30 = **1.000**          |
+| Strict Hit@5                    | 29/30 = 0.967              |
+| Avg evidence coverage           | 0.965                      |
+| Avg strict coverage             | 0.937                      |
+| Weighted coverage               | 0.961                      |
+| Answer PASS / PARTIAL / FAIL    | 34 / 0 / 0                 |
+| Unsupported claim rate          | 0/34 = **0.0**             |
+| Latency avg / min / max (ms)    | 7507.6 / 3618.7 / 15242.1  |
 | Chunk-boundary-affected queries | 3 (`q011`, `q027`, `q031`) |
 
 **Phase 0 conclusion (decision):** the small corpus cannot discriminate methods. 6,919 chars
@@ -65,25 +65,25 @@ guard only.
 
 ## Phase 0.5 decisions (this phase)
 
-| # | Decision | Why |
-|---|---|---|
-| D1 | Long-lived branch `personal-recall`, pushed to origin | §git workflow; no short-lived branch sprawl |
-| D2 | Stress data lives beside the small data and is fully isolated (`stress_*` files, `--dataset stress`) | must never overwrite the 34-query baseline |
-| D3 | Corpus size target = **≥140 chunks**, i.e. ≈45k Chinese chars (≈135 KB) | the dataset card's "50–100 KB" assumed 1 byte/char; Chinese is 3 bytes/char. The chunk count is what governs retrieval selectivity (Top-5 = 3.3 % of space vs 21.7 % today), so the chunk target wins |
-| D4 | Facts are frozen in `data/STRESS_CORPUS_SPEC.md` (§3 timelines + §4 verbatim anchors) and the text is written by 4 parallel writers | cross-year coherence of state evolution is the whole point; parallel authorship otherwise breaks it |
-| D5 | `stress_queries.json` keeps the **exact** 6-key schema of `queries.json` | no schema drift; difficulty is *measured* by the validator, not self-declared in the data |
-| D6 | 36 queries = 12 regression (old categories) + 24 hard (10 stress categories) | separates "did we break the easy stuff" from "did we actually improve recall" |
-| D7 | Difficulty gate before spending API budget: offline validation + measured diagnostics (lexical overlap, unique-anchor chunk count, near-duplicate distractor count) + independent audit | §15: never run 36 paid queries against an unaudited dataset |
+| #   | Decision                                                                                                                                                                                | Why                                                                                                                                                                                                   |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| D1  | Long-lived branch `personal-recall`, pushed to origin                                                                                                                                   | §git workflow; no short-lived branch sprawl                                                                                                                                                           |
+| D2  | Stress data lives beside the small data and is fully isolated (`stress_*` files, `--dataset stress`)                                                                                    | must never overwrite the 34-query baseline                                                                                                                                                            |
+| D3  | Corpus size target = **≥140 chunks**, i.e. ≈45k Chinese chars (≈135 KB)                                                                                                                 | the dataset card's "50–100 KB" assumed 1 byte/char; Chinese is 3 bytes/char. The chunk count is what governs retrieval selectivity (Top-5 = 3.3 % of space vs 21.7 % today), so the chunk target wins |
+| D4  | Facts are frozen in `data/STRESS_CORPUS_SPEC.md` (§3 timelines + §4 verbatim anchors) and the text is written by 4 parallel writers                                                     | cross-year coherence of state evolution is the whole point; parallel authorship otherwise breaks it                                                                                                   |
+| D5  | `stress_queries.json` keeps the **exact** 6-key schema of `queries.json`                                                                                                                | no schema drift; difficulty is *measured* by the validator, not self-declared in the data                                                                                                             |
+| D6  | 36 queries = 12 regression (old categories) + 24 hard (10 stress categories)                                                                                                            | separates "did we break the easy stuff" from "did we actually improve recall"                                                                                                                         |
+| D7  | Difficulty gate before spending API budget: offline validation + measured diagnostics (lexical overlap, unique-anchor chunk count, near-duplicate distractor count) + independent audit | §15: never run 36 paid queries against an unaudited dataset                                                                                                                                           |
 
 ## Hypotheses the stress baseline must test
 
-| # | Hypothesis | Falsified if |
-|---|---|---|
-| H1 | With ~150 chunks, dense Top-5 stops covering the gold evidence for state-change questions | Hit@5 stays ≈1.0 |
-| H2 | Recurring-entity distractor messages cause *partial* evidence (right entity, wrong date/state) | coverage stays ≈1.0 |
-| H3 | "latest state" questions get answered with an outdated state when several states are retrieved | answer PASS stays 100 % |
-| H4 | Near-duplicate wording (sleep/idle for both Render and Neon) causes entity confusion | no wrong-entity retrievals |
-| H5 | Unanswerable questions about plausible-but-absent facts trigger unsupported claims | unsupported rate stays 0 |
+| #   | Hypothesis                                                                                     | Falsified if               |
+| --- | ---------------------------------------------------------------------------------------------- | -------------------------- |
+| H1  | With ~150 chunks, dense Top-5 stops covering the gold evidence for state-change questions      | Hit@5 stays ≈1.0           |
+| H2  | Recurring-entity distractor messages cause *partial* evidence (right entity, wrong date/state) | coverage stays ≈1.0        |
+| H3  | "latest state" questions get answered with an outdated state when several states are retrieved | answer PASS stays 100 %    |
+| H4  | Near-duplicate wording (sleep/idle for both Render and Neon) causes entity confusion           | no wrong-entity retrievals |
+| H5  | Unanswerable questions about plausible-but-absent facts trigger unsupported claims             | unsupported rate stays 0   |
 
 ## Risks / watch items
 
@@ -104,15 +104,15 @@ independent difficulty audit → **then** run the unchanged stress baseline → 
 
 ## Dataset (from `stress_validation.json`, real output)
 
-| | small | stress |
-|---|---|---|
-| File | `data/chats.txt` | `data/stress_chats.txt` |
-| Bytes / chars | 11,789 / 6,919 | **94,262 / 49,457** |
-| Messages / episodes | 200 / 26 | **1,216 / 100** |
-| Chunks @ 400/100 | 23 | **165** |
-| Top-5 share of memory space | 21.7 % | **3.0 %** |
-| Window | 2024-03 → 2026-05 | 2024-01-08 → 2026-08-28 |
-| Queries | 34 (30 answerable) | **36 (34 answerable)**, 15 categories |
+|                             | small              | stress                                |
+| --------------------------- | ------------------ | ------------------------------------- |
+| File                        | `data/chats.txt`   | `data/stress_chats.txt`               |
+| Bytes / chars               | 11,789 / 6,919     | **94,262 / 49,457**                   |
+| Messages / episodes         | 200 / 26           | **1,216 / 100**                       |
+| Chunks @ 400/100            | 23                 | **165**                               |
+| Top-5 share of memory space | 21.7 %             | **3.0 %**                             |
+| Window                      | 2024-03 → 2026-05  | 2024-01-08 → 2026-08-28               |
+| Queries                     | 34 (30 answerable) | **36 (34 answerable)**, 15 categories |
 
 Dataset card: `data/STRESS_CORPUS_SPEC.md` (roster, 6 entity-state timelines, 44 verbatim anchor
 lines, distractor rules, query rules).
@@ -132,13 +132,13 @@ Splitter fidelity: the chunk counter is cross-checked against `quivr_core`'s rea
 
 Real BGE-small-zh-v1.5 + the real chunker + cosine Top-5, **no LLM, no API cost**.
 
-| | small | stress (pre-repair) |
-|---|---|---|
-| Hit@5 (answerable) | 30/30 = 100 % | **27/34 = 79.4 %** |
-| Avg evidence coverage | 96.5 % | **56.6 %** |
-| Gold first appears at dense rank (median / max) | 1 / 3 | 1 / **12** |
-| Retrieval misses | 0 | **7** |
-| Partial evidence | 3 | **16** |
+|                                                 | small         | stress (pre-repair) |
+| ----------------------------------------------- | ------------- | ------------------- |
+| Hit@5 (answerable)                              | 30/30 = 100 % | **27/34 = 79.4 %**  |
+| Avg evidence coverage                           | 96.5 %        | **56.6 %**          |
+| Gold first appears at dense rank (median / max) | 1 / 3         | 1 / **12**          |
+| Retrieval misses                                | 0             | **7**               |
+| Partial evidence                                | 3             | **16**              |
 
 The probe reproduces the small corpus's official numbers exactly (100 % / 96.5 %), which is what
 licenses using it as a pre-flight gate. Reading: the stress corpus fails mostly by **partial
@@ -150,13 +150,13 @@ evidence** — the retriever finds the entity early but misses the other state-b
 grounded, zero meta-text leaks, zero duplicate messages, both `s035`/`s036` verified genuinely
 unanswerable. Found and acted on:
 
-| # | Finding | Action |
-|---|---|---|
-| A1 | **3 poisoned gold answers** (s007, s019, s016) — a corpus-faithful model would be graded wrong (internship actually started late April, not May; 小汪's gym arc starts before 2025-02) | repaired (blocking) |
-| A2 | 9 of 24 "hard" queries answerable from a single 400-char chunk; only 7 are genuine multi-hop | question-side rewrites that force ≥2 chunks |
-| A3 | Both alias traps self-decoding (`王哥（就是小王）`, `阿伟（我室友）` appeared in the only line mentioning each) | glosses removed from the corpus; aliases now resolve from context only (adjacency / event identity) |
-| A4 | `stress_validation.json` claimed 169 chunks; the real chunker yields **165** (validator decoded raw bytes, so CRLF counted an extra `\r` per line) | validator normalises newlines like `quivr_core`'s text-mode reader |
-| A5 | Corpus contradicts spec §5.7: 7 lines state a final state outright, and the 2026-08-20 recap states four final states in ~2 chunks | **not** fixed: several are anchor lines (A44) and the recap is what makes `latest_state` answerable at all. Recorded as risk R6; the difficulty claim is restated honestly below |
+| #   | Finding                                                                                                                                                                                | Action                                                                                                                                                                           |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1  | **3 poisoned gold answers** (s007, s019, s016) — a corpus-faithful model would be graded wrong (internship actually started late April, not May; 小汪's gym arc starts before 2025-02) | repaired (blocking)                                                                                                                                                              |
+| A2  | 9 of 24 "hard" queries answerable from a single 400-char chunk; only 7 are genuine multi-hop                                                                                           | question-side rewrites that force ≥2 chunks                                                                                                                                      |
+| A3  | Both alias traps self-decoding (`王哥（就是小王）`, `阿伟（我室友）` appeared in the only line mentioning each)                                                                        | glosses removed from the corpus; aliases now resolve from context only (adjacency / event identity)                                                                              |
+| A4  | `stress_validation.json` claimed 169 chunks; the real chunker yields **165** (validator decoded raw bytes, so CRLF counted an extra `\r` per line)                                     | validator normalises newlines like `quivr_core`'s text-mode reader                                                                                                               |
+| A5  | Corpus contradicts spec §5.7: 7 lines state a final state outright, and the 2026-08-20 recap states four final states in ~2 chunks                                                     | **not** fixed: several are anchor lines (A44) and the recap is what makes `latest_state` answerable at all. Recorded as risk R6; the difficulty claim is restated honestly below |
 
 **Honest difficulty claim (post-audit):** the measured difficulty of this dataset is
 **retrieval** difficulty (miss + partial evidence), not state-assembly difficulty. Only 7 of the
@@ -165,12 +165,12 @@ axis only after Phase 1/6 work; do not over-claim it from Phase 0.5.
 
 ## Added decisions
 
-| # | Decision | Why |
-|---|---|---|
-| D8 | The paid baseline is gated behind offline validation **and** an independent adversarial audit | §15; the audit caught 3 poisoned golds that no structural check can see |
-| D9 | Poisoned golds and EASY-query difficulty are fixed **question-side**, not by rewriting the corpus | corpus edits would invalidate the validator/probe evidence and risk breaking anchor lines |
-| D10 | `expected_answer` truth is an audited property, not an assumption | a wrong gold inverts the metric silently |
-| D11 | Freeze the corpus hash in the eval record once the paid run starts | makes the result reproducible and detects later drift |
+| #   | Decision                                                                                          | Why                                                                                       |
+| --- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| D8  | The paid baseline is gated behind offline validation **and** an independent adversarial audit     | §15; the audit caught 3 poisoned golds that no structural check can see                   |
+| D9  | Poisoned golds and EASY-query difficulty are fixed **question-side**, not by rewriting the corpus | corpus edits would invalidate the validator/probe evidence and risk breaking anchor lines |
+| D10 | `expected_answer` truth is an audited property, not an assumption                                 | a wrong gold inverts the metric silently                                                  |
+| D11 | Freeze the corpus hash in the eval record once the paid run starts                                | makes the result reproducible and detects later drift                                     |
 
 ## Risks
 
@@ -192,18 +192,18 @@ Frozen dataset hashes at run time:
 
 ## Headline comparison — same frozen pipeline, only the corpus differs
 
-| Metric | Phase 0 small | Phase 0.5 stress |
-|---|---|---|
-| Queries | 34 (30 answerable) | 36 (34 answerable) |
-| Chunks | 23 | 165 |
-| Retrieval Hit@5 | 30/30 = **100 %** | 28/34 = **82.35 %** |
-| Avg evidence coverage | 96.5 % | **53.19 %** |
-| Weighted coverage | 96.1 % | **48.25 %** |
-| Answer PASS | 34/34 = **100 %** | 20/36 = **55.56 %** |
-| PARTIAL / FAIL | 0 / 0 | **9 / 7** |
-| Unsupported claim rate | 0 % | **0 %** |
-| Latency avg / max (ms) | 7,508 / 15,242 | 13,525 / 64,521 |
-| Retrieval misses | 0 | 6 (`s006 s013 s020 s021 s028 s030`) |
+| Metric                 | Phase 0 small      | Phase 0.5 stress                    |
+| ---------------------- | ------------------ | ----------------------------------- |
+| Queries                | 34 (30 answerable) | 36 (34 answerable)                  |
+| Chunks                 | 23                 | 165                                 |
+| Retrieval Hit@5        | 30/30 = **100 %**  | 28/34 = **82.35 %**                 |
+| Avg evidence coverage  | 96.5 %             | **53.19 %**                         |
+| Weighted coverage      | 96.1 %             | **48.25 %**                         |
+| Answer PASS            | 34/34 = **100 %**  | 20/36 = **55.56 %**                 |
+| PARTIAL / FAIL         | 0 / 0              | **9 / 7**                           |
+| Unsupported claim rate | 0 %                | **0 %**                             |
+| Latency avg / max (ms) | 7,508 / 15,242     | 13,525 / 64,521                     |
+| Retrieval misses       | 0                  | 6 (`s006 s013 s020 s021 s028 s030`) |
 
 Worst categories by coverage: `latest_state` 16.7 %, `temporal_state_change` 27.1 %,
 `negative_evidence` / `multi_evidence` 37.5 %, `implicit_reference` 45.8 %.
@@ -211,13 +211,13 @@ Regression categories held up: `exact_fact` / `exact_keyword` / `time_recall` = 
 
 ## Failure attribution (manual grading, 36/36, `stress_manual_labels.json`)
 
-| | count |
-|---|---|
-| Queries whose gold facts were **absent from the retrieved chunks** (`evidence_sufficient=false`) | **16** |
-| Failures where the evidence WAS sufficient (pure generation failures) | **0** |
-| PASS among the 20 sufficient queries | **20/20** |
-| Unsupported claims | **0/36** |
-| Suspected gold errors after the audit repair | **0** |
+|                                                                                                  | count     |
+| ------------------------------------------------------------------------------------------------ | --------- |
+| Queries whose gold facts were **absent from the retrieved chunks** (`evidence_sufficient=false`) | **16**    |
+| Failures where the evidence WAS sufficient (pure generation failures)                            | **0**     |
+| PASS among the 20 sufficient queries                                                             | **20/20** |
+| Unsupported claims                                                                               | **0/36**  |
+| Suspected gold errors after the audit repair                                                     | **0**     |
 
 The correlation is perfect: every non-PASS answer is a query where retrieval did not deliver the
 gold lines, and the generator was never wrong when it had them. Observed behaviour under
@@ -227,11 +227,11 @@ and invented nothing.
 
 ## How much of the gap is just the Top-5 window? (`probe_recall_at_k.py`)
 
-| group | cov@5 | cov@10 | cov@20 | cov@50 | cov@100 |
-|---|---|---|---|---|---|
-| all answerable | 53.4 % | 74.5 % | 82.1 % | 94.9 % | 99.3 % |
-| the 16 insufficient queries | 37.5 % | 58.9 % | 71.9 % | 90.6 % | 98.4 % |
-| the 20 sufficient queries | 67.6 % | 88.4 % | 91.2 % | 98.6 % | 100 % |
+| group                       | cov@5  | cov@10 | cov@20 | cov@50 | cov@100 |
+| --------------------------- | ------ | ------ | ------ | ------ | ------- |
+| all answerable              | 53.4 % | 74.5 % | 82.1 % | 94.9 % | 99.3 %  |
+| the 16 insufficient queries | 37.5 % | 58.9 % | 71.9 % | 90.6 % | 98.4 %  |
+| the 20 sufficient queries   | 67.6 % | 88.4 % | 91.2 % | 98.6 % | 100 %   |
 
 **The gold evidence is in the ranking — it sits just outside Top-5.** +21 points of coverage are
 available from window/ranking alone (k=5 → 10). Offline, free, reproducible.
@@ -258,12 +258,12 @@ Concrete mechanisms, observed in the retrieved sources:
 Failure is retrieval-side, and the missing evidence is retrievable — so the next change must
 attack **evidence completeness per retrieval slot**, not generation.
 
-| Option | Expected effect | Verdict |
-|---|---|---|
-| **Phase 1: session/conversation-aware chunking + MemoryEvent/MemoryChunk** | one slot = one coherent session (participants + time range) instead of a 400-char fragment; the anchor line arrives with its context, and 5 slots cover 5 sessions rather than 5 fragments of ~2 | **do this first** |
-| Control: same corpus at k=10/20 (no structural change) | +21 pts coverage for free | **run as the control arm** — Phase 1 must beat it |
-| Phase 3 hybrid BM25+RRF | targets exact-token recall, but the failing questions deliberately avoid entity names and dense already finds the topic | defer; test later, possibly combined |
-| Phase 7 abstention / false-memory control | already 0 % unsupported and 2/2 correct abstentions | **deprioritised** — no measured need yet |
+| Option                                                                     | Expected effect                                                                                                                                                                                  | Verdict                                           |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------- |
+| **Phase 1: session/conversation-aware chunking + MemoryEvent/MemoryChunk** | one slot = one coherent session (participants + time range) instead of a 400-char fragment; the anchor line arrives with its context, and 5 slots cover 5 sessions rather than 5 fragments of ~2 | **do this first**                                 |
+| Control: same corpus at k=10/20 (no structural change)                     | +21 pts coverage for free                                                                                                                                                                        | **run as the control arm** — Phase 1 must beat it |
+| Phase 3 hybrid BM25+RRF                                                    | targets exact-token recall, but the failing questions deliberately avoid entity names and dense already finds the topic                                                                          | defer; test later, possibly combined              |
+| Phase 7 abstention / false-memory control                                  | already 0 % unsupported and 2/2 correct abstentions                                                                                                                                              | **deprioritised** — no measured need yet          |
 
 **Phase 1 A/B plan:** arm A = session-aware chunking at k=5 (apples-to-apples with this frozen
 baseline); arm B = current 400/100 chunks at k=10 and k=20; same 36 stress queries, same embedder,
@@ -287,19 +287,19 @@ chunks** (avg 487 chars, median 13 chat lines) vs 165 fixed 400/100 slices.
 
 ## Arm matrix (all four arms: same corpus, queries, BGE embedder, DeepSeek model, prompt)
 
-| arm | retrieval unit | k | chunks | Hit@k | avg coverage | PASS | PARTIAL | FAIL | score /36 | unsupported |
-|---|---|---|---|---|---|---|---|---|---|---|
-| A1 frozen baseline | fixed 400/100 | 5 | 165 | 82.35 % | 53.19 % | 20 (55.6 %) | 9 | 7 | 24.5 | 0 % |
-| A2 Phase 1 | session | 5 | 101 | 88.24 % | 62.75 % | 24 (66.7 %) | 9 | 3 | 28.5 | 0 % |
-| A3 window control | fixed 400/100 | **10** | 165 | 88.24 % | 70.10 % | 26 (72.2 %) | 7 | 3 | 29.5 | 0 % |
-| **A4 session + window** | session | **10** | 101 | **97.06 %** | **84.07 %** | **29 (80.6 %)** | 6 | **1** | **32.0** | 0 % |
+| arm                     | retrieval unit | k      | chunks | Hit@k       | avg coverage | PASS            | PARTIAL | FAIL  | score /36 | unsupported |
+| ----------------------- | -------------- | ------ | ------ | ----------- | ------------ | --------------- | ------- | ----- | --------- | ----------- |
+| A1 frozen baseline      | fixed 400/100  | 5      | 165    | 82.35 %     | 53.19 %      | 20 (55.6 %)     | 9       | 7     | 24.5      | 0 %         |
+| A2 Phase 1              | session        | 5      | 101    | 88.24 %     | 62.75 %      | 24 (66.7 %)     | 9       | 3     | 28.5      | 0 %         |
+| A3 window control       | fixed 400/100  | **10** | 165    | 88.24 %     | 70.10 %      | 26 (72.2 %)     | 7       | 3     | 29.5      | 0 %         |
+| **A4 session + window** | session        | **10** | 101    | **97.06 %** | **84.07 %**  | **29 (80.6 %)** | 6       | **1** | **32.0**  | 0 %         |
 
 Offline probe grid (free, real BGE, no LLM) — the same conclusion on the retrieval side:
 
-| unit | cov@5 | cov@10 | cov@20 |
-|---|---|---|---|
+| unit          | cov@5  | cov@10 | cov@20 |
+| ------------- | ------ | ------ | ------ |
 | fixed 400/100 | 53.4 % | 74.5 % | 82.1 % |
-| session | 67.2 % | 82.4 % | 91.7 % |
+| session       | 67.2 % | 82.4 % | 91.7 % |
 
 ## Decision: **KEEP** conversation-aware chunking
 
@@ -338,10 +338,10 @@ recommendation, `s028` needs the 2024-11-19 account line, `s030` needs the 2024-
 
 `probe_recall_at_k.py --chunking session` shows those lines **are** in the ranking, just deep:
 
-| group | cov@5 | cov@10 | cov@20 | cov@50 | cov@101 |
-|---|---|---|---|---|---|
-| all answerable | 67.2 % | 82.4 % | 91.7 % | 97.1 % | 100 % |
-| the 5 never-PASS queries | 35 % | 50 % | 65 % | 85 % | 100 % |
+| group                    | cov@5  | cov@10 | cov@20 | cov@50 | cov@101 |
+| ------------------------ | ------ | ------ | ------ | ------ | ------- |
+| all answerable           | 67.2 % | 82.4 % | 91.7 % | 97.1 % | 100 %   |
+| the 5 never-PASS queries | 35 %   | 50 %   | 65 %   | 85 %   | 100 %   |
 
 ⇒ The bottleneck is no longer the retrieval **unit** (Phase 1 fixed that) but the **selection**:
 the decisive line is ranked outside the top 10 in a 101-unit pool. `s007`/`s019` are separate
@@ -349,12 +349,12 @@ generation slips — all their gold lines were retrieved.
 
 ## Next phase decision
 
-| Option | Expected effect | Verdict |
-|---|---|---|
-| **Phase 3-lite: widen candidates (k≈50) + rerank to 5** | the sweep proves the hard tail sits at rank 20–50; a ranker that selects 5 of 50 attacks exactly that | **do this next** |
-| Phase 3 hybrid BM25 + RRF (no reranker) | the failing questions deliberately avoid entity tokens, so lexical matching cannot recover them on its own | defer / combine later |
-| Phase 4 temporal parsing | would help time-scoped questions, but the hard tail fails on *entity-implied* slices, not on date arithmetic | defer |
-| Phase 6 multi-evidence aggregation | plausible, but it presupposes the same re-ranking ability | after the reranker |
+| Option                                                  | Expected effect                                                                                              | Verdict               |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------- |
+| **Phase 3-lite: widen candidates (k≈50) + rerank to 5** | the sweep proves the hard tail sits at rank 20–50; a ranker that selects 5 of 50 attacks exactly that        | **do this next**      |
+| Phase 3 hybrid BM25 + RRF (no reranker)                 | the failing questions deliberately avoid entity tokens, so lexical matching cannot recover them on its own   | defer / combine later |
+| Phase 4 temporal parsing                                | would help time-scoped questions, but the hard tail fails on *entity-implied* slices, not on date arithmetic | defer                 |
+| Phase 6 multi-evidence aggregation                      | plausible, but it presupposes the same re-ranking ability                                                    | after the reranker    |
 
 **Phase 2 A/B plan:** reference = A4 (session + k=10). Test session + k=50 + rerank→5 with the same
 36 queries; keep the reranker only if PASS/coverage improve over A4, and report its latency cost.
@@ -375,12 +375,12 @@ Model: `BAAI/bge-reranker-base` (1.1 GB, local, CPU, ~25 pairs/s).
 
 Retrieval units = session chunks (101), candidate pool = dense top-50.
 
-| strategy | slots | Hit@k | avg coverage |
-|---|---|---|---|
-| flat dense top-5 (A2-equivalent) | 5 | 94.1 % | 67.2 % |
-| **re-rank 50 → keep 5** | 5 | 94.1 % | **67.2 %** (identical) |
-| flat dense top-10 (A4-equivalent) | 10 | 97.1 % | **82.4 %** |
-| **re-rank 50 → keep 10** | 10 | 97.1 % | **80.9 %** (worse) |
+| strategy                          | slots | Hit@k  | avg coverage           |
+| --------------------------------- | ----- | ------ | ---------------------- |
+| flat dense top-5 (A2-equivalent)  | 5     | 94.1 % | 67.2 %                 |
+| **re-rank 50 → keep 5**           | 5     | 94.1 % | **67.2 %** (identical) |
+| flat dense top-10 (A4-equivalent) | 10    | 97.1 % | **82.4 %**             |
+| **re-rank 50 → keep 10**          | 10    | 97.1 % | **80.9 %** (worse)     |
 
 Per-query at 5 slots: **8 improved, 9 worsened, 19 unchanged** — e.g. `s028`'s gold chunk moved
 dense rank 10 → 1 (coverage 0.00 → 1.00) but `s006`'s moved 4 → 17 (1.00 → 0.00). The re-ranker is
@@ -390,11 +390,11 @@ net-positive: at equal slots it ties, and at the deployed 10 slots it is slightl
 Second hypothesis tested in the same pass — **temporal fan-out** (one dense query per year,
 unioned), on the theory that the missing line lives in an under-represented year slice:
 
-| strategy | slots | Hit | coverage |
-|---|---|---|---|
-| flat dense top-10 | 10 | 100 % | 82.4 % |
-| year fan-out top-3/year | 9 | 100 % | 75.2 % (worse) |
-| year fan-out top-4/year | 12 | 100 % | 83.8 % (+1.4 pts for +2 slots — not a mechanism win) |
+| strategy                | slots | Hit   | coverage                                             |
+| ----------------------- | ----- | ----- | ---------------------------------------------------- |
+| flat dense top-10       | 10    | 100 % | 82.4 %                                               |
+| year fan-out top-3/year | 9     | 100 % | 75.2 % (worse)                                       |
+| year fan-out top-4/year | 12    | 100 % | 83.8 % (+1.4 pts for +2 slots — not a mechanism win) |
 
 **Conclusion:** the residual coverage gap is **not** a selection/ranking problem and **not** a
 temporal-allocation problem. Reordering the same candidate pool cannot add evidence, and the gold
@@ -423,12 +423,12 @@ including, often, the decisive line. A future re-test should re-rank at **event*
 
 ## Next phase decision (refined by two measured failures)
 
-| Option | Evidence for / against | Verdict |
-|---|---|---|
-| **Phase 4/6-lite: decompose trajectory questions into per-slice sub-queries, retrieve each, union the evidence** | the missing lines are semantically distant but *individually answerable* — a sub-question like "课程项目最开始用的哪个数据库" matches the 2024-03 line directly | **do this next** |
-| Re-rank at event granularity | untested; plausible given the truncation caveat | second candidate |
-| Hybrid BM25 + RRF | still untested, and the failing questions deliberately avoid entity tokens | defer |
-| Wider k alone (k=20+) | works (coverage 91.7 % offline at k=20) but spends context and does not explain *why* evidence is missed | fallback, not a capability |
+| Option                                                                                                           | Evidence for / against                                                                                                                                          | Verdict                    |
+| ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| **Phase 4/6-lite: decompose trajectory questions into per-slice sub-queries, retrieve each, union the evidence** | the missing lines are semantically distant but *individually answerable* — a sub-question like "课程项目最开始用的哪个数据库" matches the 2024-03 line directly | **do this next**           |
+| Re-rank at event granularity                                                                                     | untested; plausible given the truncation caveat                                                                                                                 | second candidate           |
+| Hybrid BM25 + RRF                                                                                                | still untested, and the failing questions deliberately avoid entity tokens                                                                                      | defer                      |
+| Wider k alone (k=20+)                                                                                            | works (coverage 91.7 % offline at k=20) but spends context and does not explain *why* evidence is missed                                                        | fallback, not a capability |
 
 ---
 
@@ -437,17 +437,17 @@ including, often, the decisive line. A future re-test should re-rank at **event*
 Four candidate mechanisms, all measured **offline** (real BGE + real session chunks, no API cost)
 against the same reference: session units, flat dense top-10 = 82.4 % coverage / 100 % hit.
 
-| mechanism | slots | Hit@k | avg coverage | verdict |
-|---|---|---|---|---|
-| flat dense top-10 | 10 | 100 % | 82.4 % | reference |
-| cross-encoder re-rank (50 → 10) | 10 | 97.1 % | 80.9 % | ❌ worse |
-| temporal fan-out (top-3 per year, unioned) | 9 | 100 % | 75.2 % | ❌ worse |
-| decompose → union (top-3 / sub-question) | 4.9 | 94.1 % | 70.1 % | ❌ worse |
-| decompose → union (top-4 / sub-question) | 6.1 | 94.1 % | 75.2 % | ❌ worse |
-| BM25 alone (CJK bigram + ASCII terms) | 10 | 94.1 % | 78.2 % | ❌ worse alone |
-| **RRF(dense, BM25)** | 10 | 100 % | **84.8 %** | ✅ **+2.4 pts** |
-| flat dense top-20 | 20 | 100 % | 91.7 % | (budget, not a mechanism) |
-| **RRF(dense, BM25)** | 20 | 100 % | **93.9 %** | ✅ **+2.2 pts** |
+| mechanism                                  | slots | Hit@k  | avg coverage | verdict                   |
+| ------------------------------------------ | ----- | ------ | ------------ | ------------------------- |
+| flat dense top-10                          | 10    | 100 %  | 82.4 %       | reference                 |
+| cross-encoder re-rank (50 → 10)            | 10    | 97.1 % | 80.9 %       | ❌ worse                   |
+| temporal fan-out (top-3 per year, unioned) | 9     | 100 %  | 75.2 %       | ❌ worse                   |
+| decompose → union (top-3 / sub-question)   | 4.9   | 94.1 % | 70.1 %       | ❌ worse                   |
+| decompose → union (top-4 / sub-question)   | 6.1   | 94.1 % | 75.2 %       | ❌ worse                   |
+| BM25 alone (CJK bigram + ASCII terms)      | 10    | 94.1 % | 78.2 %       | ❌ worse alone             |
+| **RRF(dense, BM25)**                       | 10    | 100 %  | **84.8 %**   | ✅ **+2.4 pts**            |
+| flat dense top-20                          | 20    | 100 %  | 91.7 %       | (budget, not a mechanism) |
+| **RRF(dense, BM25)**                       | 20    | 100 %  | **93.9 %**   | ✅ **+2.2 pts**            |
 
 ## What the sweep establishes
 
@@ -499,12 +499,12 @@ configured context budget), plus a guarded `iter_documents` vector-store enumera
 
 Driving `get_retriever` over a real FAISS index of the 101 session chunks:
 
-| configuration | slots | Hit@k | coverage | vs offline probe |
-|---|---|---|---|---|
-| dense only (hybrid disabled) | 10 | 100 % | 82.4 % | ✅ identical |
-| hybrid, pool 10 → cut 10 | 10 | 100 % | 84.8 % | ✅ identical |
-| hybrid, pool 20 → cut 10 | 10 | 100 % | 84.8 % | — |
-| **hybrid, pool 30 → cut 10** | 10 | 100 % | **86.3 %** | measured plateau (50/80 identical) |
+| configuration                | slots | Hit@k | coverage   | vs offline probe                   |
+| ---------------------------- | ----- | ----- | ---------- | ---------------------------------- |
+| dense only (hybrid disabled) | 10    | 100 % | 82.4 %     | ✅ identical                        |
+| hybrid, pool 10 → cut 10     | 10    | 100 % | 84.8 %     | ✅ identical                        |
+| hybrid, pool 20 → cut 10     | 10    | 100 % | 84.8 %     | —                                  |
+| **hybrid, pool 30 → cut 10** | 10    | 100 % | **86.3 %** | measured plateau (50/80 identical) |
 
 Dense-only and pool-10 reproduce the probe exactly, so the deployed mechanism is the measured one;
 `candidate_k=30` is the measured plateau and is now the default. The async path (`ainvoke`, which the
@@ -512,10 +512,10 @@ pipeline actually uses) and FAISS `docstore._dict` enumeration were verified as 
 
 ## End-to-end paid arm
 
-| arm | unit | k | hybrid | Hit@k | coverage | PASS | PARTIAL | FAIL | unsupported | latency |
-|---|---|---|---|---|---|---|---|---|---|---|
-| A4 reference | session | 10 | no | 97.1 % | 84.07 % | 29 (80.6 %) | 6 | 1 | 0 % | 12,763 ms |
-| **A5 hybrid** | session | 10 | **yes** | 97.1 % | **85.05 %** | **30 (83.3 %)** | 5 | 1 | 0 % | **11,243 ms** |
+| arm           | unit    | k   | hybrid  | Hit@k  | coverage    | PASS            | PARTIAL | FAIL | unsupported | latency       |
+| ------------- | ------- | --- | ------- | ------ | ----------- | --------------- | ------- | ---- | ----------- | ------------- |
+| A4 reference  | session | 10  | no      | 97.1 % | 84.07 %     | 29 (80.6 %)     | 6       | 1    | 0 %         | 12,763 ms     |
+| **A5 hybrid** | session | 10  | **yes** | 97.1 % | **85.05 %** | **30 (83.3 %)** | 5       | 1    | 0 %         | **11,243 ms** |
 
 All 36 queries retrieved a different evidence set than A4 (mechanism verified active). Retrieval
 misses fell to one query (`s006`). Arm ladder of PASS: `20 → 24 → 26 → 29 → 30 / 36` for
@@ -540,9 +540,9 @@ misses fell to one query (`s006`). Arm ladder of PASS: `20 → 24 → 26 → 29 
 
 `stress_hybrid_k10_label_diagnostics.json` splits the 6 imperfect queries:
 
-| cause | ids |
-|---|---|
-| retrieval (decisive line missing) | `s013`, `s019`, `s023`, `s030` |
+| cause                                                  | ids                                                                                                                                                                |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| retrieval (decisive line missing)                      | `s013`, `s019`, `s023`, `s030`                                                                                                                                     |
 | **generation** (evidence complete, answer still wrong) | **`s007`** (misreads the retrieved 2026-05-17 exchange and asserts a May start), **`s025`** (all 4 gold lines retrieved, yet it refuses to disambiguate 王哥=小王) |
 
 First measured justification for **Phase 7 (grounded generation / abstention control)**: not
@@ -577,18 +577,18 @@ Also added `--max-output-tokens` and `--temperature` knobs (both default to the 
 
 ## Result (A6 vs A5 — identical retrieval config, only the prompt differs)
 
-| arm | PASS | PARTIAL | FAIL | unsupported | coverage | latency |
-|---|---|---|---|---|---|---|
-| A5 stock prompt | 30 (83.3 %) | 5 | 1 (`s025`) | 0 % | 85.05 % | 11,243 ms |
-| **A6 timeline prompt** | **31 (86.1 %)** | 5 | **0** | **0 %** | 83.58 % | 13,539 ms |
+| arm                    | PASS            | PARTIAL | FAIL       | unsupported | coverage | latency   |
+| ---------------------- | --------------- | ------- | ---------- | ----------- | -------- | --------- |
+| A5 stock prompt        | 30 (83.3 %)     | 5       | 1 (`s025`) | 0 %         | 85.05 %  | 11,243 ms |
+| **A6 timeline prompt** | **31 (86.1 %)** | 5       | **0**      | **0 %**     | 83.58 %  | 13,539 ms |
 
 Only **3 of 36** verdicts changed, and the attribution matters more than the count:
 
-| id | change | attribution |
-|---|---|---|
+| id     | change         | attribution                                                                                                                                                    |
+| ------ | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `s019` | PARTIAL → PASS | **prompt**: picks the dated contemporaneous line over the later "别拖到五月才动手" remark, concludes late April ≈ 04-26, "没有拖到 5 月" — reproduces the gold |
-| `s025` | FAIL → PASS | **prompt**: commits to "不是同一个人" using the retrieved 王哥→小王 reply and 小汪's MySQL line, where A5 refused despite complete evidence |
-| `s021` | PASS → PARTIAL | **retrieval variance**, not the prompt: the decisive 2026-04-06 line was simply not retrieved this run |
+| `s025` | FAIL → PASS    | **prompt**: commits to "不是同一个人" using the retrieved 王哥→小王 reply and 小汪's MySQL line, where A5 refused despite complete evidence                    |
+| `s021` | PASS → PARTIAL | **retrieval variance**, not the prompt: the decisive 2026-04-06 line was simply not retrieved this run                                                         |
 
 `s007` is half-fixed: the affirmative "到五月才投了十来家" error is gone and every delay stage is
 now dated, but the closing line still hedges "四月下旬/五月" instead of resolving to late April.
@@ -600,13 +600,13 @@ induce fabrication — every date and number traces to the arm's own retrieved c
 A5 and A6 have an **identical retrieval configuration** (session units, k=10, hybrid RRF) — only
 the *answer* prompt differs, which cannot affect retrieval. Yet:
 
-| between two runs of the same retrieval config | value |
-|---|---|
-| queries with an identical retrieved evidence set | **4 / 36** |
-| mean Jaccard overlap of retrieved sets | 0.740 |
-| mean per-query coverage change | **2.78 points** |
-| max per-query coverage change | 50 points |
-| aggregate coverage change | 1.38 points |
+| between two runs of the same retrieval config    | value           |
+| ------------------------------------------------ | --------------- |
+| queries with an identical retrieved evidence set | **4 / 36**      |
+| mean Jaccard overlap of retrieved sets           | 0.740           |
+| mean per-query coverage change                   | **2.78 points** |
+| max per-query coverage change                    | 50 points       |
+| aggregate coverage change                        | 1.38 points     |
 
 Cause: the pipeline **rewrites the query with an LLM call** (`CONDENSE_TASK_PROMPT`) at the frozen
 temperature 0.3, and retrieval runs on that rewritten query. So run-to-run variation in *evidence*
@@ -640,11 +640,11 @@ is real and large. Implications:
 
 Reference config (A6), run twice with `--temperature 0`:
 
-| pair | identical evidence sets | identical answers | mean per-query coverage \|Δ\| | aggregate coverage |
-|---|---|---|---|---|
-| rep1 vs rep2 (**both t=0**) | **6 / 36** | **0 / 36** | **3.70 pts** (max 33) | 85.54 % vs 83.58 % |
-| A6 (t=0.3) vs rep1 | 9 / 36 | 0 / 36 | 5.09 pts | — |
-| A6 (t=0.3) vs rep2 | 5 / 36 | 0 / 36 | 4.17 pts | — |
+| pair                        | identical evidence sets | identical answers | mean per-query coverage \|Δ\| | aggregate coverage |
+| --------------------------- | ----------------------- | ----------------- | ----------------------------- | ------------------ |
+| rep1 vs rep2 (**both t=0**) | **6 / 36**              | **0 / 36**        | **3.70 pts** (max 33)         | 85.54 % vs 83.58 % |
+| A6 (t=0.3) vs rep1          | 9 / 36                  | 0 / 36            | 5.09 pts                      | —                  |
+| A6 (t=0.3) vs rep2          | 5 / 36                  | 0 / 36            | 4.17 pts                      | —                  |
 
 **Conclusion: `temperature=0` does not make this pipeline reproducible.** The serving stack
 (reasoning model, batching/routing) is nondeterministic, and the pipeline's `rewrite` node feeds an
@@ -660,30 +660,30 @@ pure configuration change.
 
 Verification that retrieval became deterministic:
 
-| check | result |
-|---|---|
+| check                                                                                              | result                                      |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------- |
 | pipeline retrieval vs the offline deterministic reference (raw question, BGE + FAISS + BM25 + RRF) | **36 / 36 identical, including rank order** |
-| offline reference re-run (byte comparison) | **identical hash** |
+| offline reference re-run (byte comparison)                                                         | **identical hash**                          |
 
 ## Effect on quality (A7 vs the rewrite arms)
 
-| arm | Hit@k | coverage | PASS | PARTIAL | FAIL | unsupported | latency |
-|---|---|---|---|---|---|---|---|
-| A6 (rewrite, t=0.3) | 97.06 % | 83.58 % | 31 | 5 | 0 | 0 % | 13,539 ms |
-| rep1 (rewrite, t=0) | 97.06 % | 85.54 % | — | — | — | 0 % | 13,608 ms |
-| rep2 (rewrite, t=0) | 97.06 % | 83.58 % | — | — | — | 0 % | 13,279 ms |
-| **A7 (no-rewrite, deterministic)** | **100.00 %** | **86.27 %** | **33 (91.7 %)** | 3 | **0** | **0 %** | **9,462 ms** |
+| arm                                | Hit@k        | coverage    | PASS            | PARTIAL | FAIL  | unsupported | latency      |
+| ---------------------------------- | ------------ | ----------- | --------------- | ------- | ----- | ----------- | ------------ |
+| A6 (rewrite, t=0.3)                | 97.06 %      | 83.58 %     | 31              | 5       | 0     | 0 %         | 13,539 ms    |
+| rep1 (rewrite, t=0)                | 97.06 %      | 85.54 %     | —               | —       | —     | 0 %         | 13,608 ms    |
+| rep2 (rewrite, t=0)                | 97.06 %      | 83.58 %     | —               | —       | —     | 0 %         | 13,279 ms    |
+| **A7 (no-rewrite, deterministic)** | **100.00 %** | **86.27 %** | **33 (91.7 %)** | 3       | **0** | **0 %**     | **9,462 ms** |
 
 Removing the rewrite improves the retrieval **and** the answer quality, and cuts latency ~30 %:
 zero retrieval misses, +2.7 coverage points over A6, +2 PASS, no failures left.
 
 ### Where the +2 net comes from (it is not a clean sweep)
 
-| id | change vs A6 | note |
-|---|---|---|
-| `s007` | PARTIAL → PASS | the "四月下旬/五月" hedge is gone entirely; the answer quotes the 04-20 and 05-10 anchors instead. **Borderline call** — it conveys late April via the quoted anchors rather than asserting it; a stricter grader would leave it PARTIAL (32/4/0) |
-| `s021` | PARTIAL → PASS | the April line *was* retrieved this time (chunk 83); both halves now answered verbatim |
-| `s023` | PARTIAL → PASS | the exact 2024-07-21 anchor is still missing, but other anchors let it bound the gap to "3–5 个月" (gold: 大概四个月) instead of declining |
+| id     | change vs A6       | note                                                                                                                                                                                                                                                                                            |
+| ------ | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `s007` | PARTIAL → PASS     | the "四月下旬/五月" hedge is gone entirely; the answer quotes the 04-20 and 05-10 anchors instead. **Borderline call** — it conveys late April via the quoted anchors rather than asserting it; a stricter grader would leave it PARTIAL (32/4/0)                                               |
+| `s021` | PARTIAL → PASS     | the April line *was* retrieved this time (chunk 83); both halves now answered verbatim                                                                                                                                                                                                          |
+| `s023` | PARTIAL → PASS     | the exact 2024-07-21 anchor is still missing, but other anchors let it bound the gap to "3–5 个月" (gold: 大概四个月) instead of declining                                                                                                                                                      |
 | `s020` | PASS → **PARTIAL** | **the measured cost of dropping the rewrite**: the answer fuses two events and dates the switch "2025 年底", contradicting the dated 2025-06 records in its own context. The trap is a corpus-internal recollection line ("去年年底…数据库也跟着放一块了"); the rewrite arm did not fall for it |
 
 Also `s030`'s cause flipped from retrieval to answer-side (its naming facts were retrieved this arm),
@@ -748,15 +748,15 @@ chunk-count bug: check the convention against the framework's code, not against 
 
 ## Citation metrics (A8)
 
-| metric | A8 (cited) | A7 (uncited) |
-|---|---|---|
-| citation rate | **100 %** | 0 % |
-| citations / invalid | 205 / **0** | 0 / 0 |
-| **citation coverage** (gold in cited chunk) | **77.2 %** | 0 % |
-| retrieval coverage (gold in retrieved chunk) | 84.2 % | 84.2 % |
-| citation precision (lexical lower bound) | 61.0 % | n/a |
-| abstention accuracy | 100 % | 100 % |
-| unsupported claims | 0 % | 0 % |
+| metric                                       | A8 (cited)  | A7 (uncited) |
+| -------------------------------------------- | ----------- | ------------ |
+| citation rate                                | **100 %**   | 0 %          |
+| citations / invalid                          | 205 / **0** | 0 / 0        |
+| **citation coverage** (gold in cited chunk)  | **77.2 %**  | 0 %          |
+| retrieval coverage (gold in retrieved chunk) | 84.2 %      | 84.2 %       |
+| citation precision (lexical lower bound)     | 61.0 %      | n/a          |
+| abstention accuracy                          | 100 %       | 100 %        |
+| unsupported claims                           | 0 %         | 0 %          |
 
 `citation coverage 77.2 % vs retrieval coverage 84.2 %` is the honest reading: the model cites
 almost everything it uses, and the 7-point gap is evidence it had but did not cite.
@@ -767,10 +767,10 @@ Retrieval is **byte-identical between A7 and A8 (36/36, order included)** becaus
 removed the LLM from the retrieval path — both arms match the offline deterministic reference. So
 the citation instruction is the *only* difference, and every verdict change is attributable to it.
 
-| arm | PASS | PARTIAL | FAIL | unsupported | misleading citations |
-|---|---|---|---|---|---|
-| A7 (no citations) | **33** | 3 | 0 | 0 % | n/a |
-| A8 (mandatory citations) | **31** | 5 | 0 | 0 % | **0 / 36** |
+| arm                      | PASS   | PARTIAL | FAIL | unsupported | misleading citations |
+| ------------------------ | ------ | ------- | ---- | ----------- | -------------------- |
+| A7 (no citations)        | **33** | 3       | 0    | 0 %         | n/a                  |
+| A8 (mandatory citations) | **31** | 5       | 0    | 0 %         | **0 / 36**           |
 
 ## The trade-off, diagnosed
 
@@ -817,11 +817,11 @@ all three match the offline deterministic reference. Answer length: 235 → 267 
 
 ## Results
 
-| arm | PASS | PARTIAL | FAIL | unsupported claims | citation rate | misleading citations |
-|---|---|---|---|---|---|---|
-| A7 timeline (no citations) | 33 (91.7 %) | 3 | 0 | **0 %** | 0 % | n/a |
-| A8 cited | 31 (86.1 %) | 5 | 0 | **0 %** | 100 % | 0 / 36 |
-| **A9 cited + committed** | **34 (94.4 %)** | 2 | 0 | **2.78 % (1/36)** | 100 % | 0 / 36 |
+| arm                        | PASS            | PARTIAL | FAIL | unsupported claims | citation rate | misleading citations |
+| -------------------------- | --------------- | ------- | ---- | ------------------ | ------------- | -------------------- |
+| A7 timeline (no citations) | 33 (91.7 %)     | 3       | 0    | **0 %**            | 0 %           | n/a                  |
+| A8 cited                   | 31 (86.1 %)     | 5       | 0    | **0 %**            | 100 %         | 0 / 36               |
+| **A9 cited + committed**   | **34 (94.4 %)** | 2       | 0    | **2.78 % (1/36)**  | 100 %         | 0 / 36               |
 
 The clause did exactly what it was designed to do — the two hedge losses came back, with correct
 citations intact:
@@ -873,3 +873,60 @@ The grader's diagnostics sidecar arrived as **malformed JSON** (two unescaped `"
 span; the labels file was fine). It was repaired by re-serialising through `json.dump`, and the gate
 list now includes a **JSON-validity sweep over every `*labels.json` / `*diagnostics.json`** before a
 commit — 19 files checked, 0 malformed.
+
+---
+
+# Phase 7c — the narrowed clause: citations **and** a clean groundedness record (A10, adopted)
+
+Pre-registered criterion before the run: **PASS ≥ 33 AND unsupported = 0 AND citation honesty
+intact.** A9's broad clause proved the mechanism works but is unsafe; this variant keeps the licence
+it earned and removes the one it abused (`--answer-prompt cited-narrow`):
+
+* allowed: commit when the sources jointly determine the answer, **including cross-source
+  identity/equivalence conclusions**;
+* forbidden: asserting that something "stopped / was interrupted / resumed / continued" unless a
+  record says so — "where the records are silent, say that the records do not say; never fill the gap
+  with an inference".
+
+## Four-arm prompt experiment — retrieval held constant
+
+All four arms (`A7`–`A10`) retrieve **identically, 36/36 pairwise and against the offline
+deterministic reference**, so every difference below is attributable to the prompt alone.
+
+| arm                        | PASS            | PARTIAL | FAIL | unsupported  | citation rate | misleading citations | Hit@k |
+| -------------------------- | --------------- | ------- | ---- | ------------ | ------------- | -------------------- | ----- |
+| A7 timeline (no citations) | 33 (91.7 %)     | 3       | 0    | 0 %          | 0 %           | n/a                  | 100 % |
+| A8 cited                   | 31 (86.1 %)     | 5       | 0    | 0 %          | 100 %         | 0 / 36               | 100 % |
+| A9 cited-committed         | 34 (94.4 %)     | 2       | 0    | **2.78 %** ✗ | 100 %         | 0 / 36               | 100 % |
+| **A10 cited-narrow**       | **33 (91.7 %)** | 3       | 0    | **0 %** ✓    | **100 %**     | **0 / 36**           | 100 % |
+
+Citation metrics (A10): 205 citations, **0 invalid**, gold-in-cited coverage 76.3 % (vs 84.2 %
+retrieved), lexical precision 61.5 %, abstention accuracy 100 %.
+
+## What the narrow clause did and did not fix
+
+* **`s016` fixed** (the A9 unsupported claim). A10 now closes with: *"中间是否中断、是否重新开始，
+  **记录没有说明，不能断言一直坚持或停过**"* — which is the gold's own caveat, and it correctly notes
+  that the 2025-12-27 line is about me rather than 小汪.
+* **`s025` still commits** ("不是同一个人"), so the identity licence survived.
+* **`s032` reverted to hedging** ("无法仅凭现有记录判断是不是同一个"). A9 committed there; A10 does not.
+  Net vs A9: −1 PASS, but groundedness restored (0 unsupported vs 1).
+
+## Decision: **adopt A10 as the product reference**
+
+A10 strictly dominates on the axis this project exists for, and improves on the alternatives:
+
+* vs **A7** (old quality reference): same PASS (33), same groundedness (0 unsupported), **plus**
+  verifiable provenance (100 % citation rate, 0 misleading) — a capability A7 did not have at all.
+* vs **A8** (previous product reference): **+2 PASS**, same groundedness, same citation honesty.
+* vs **A9** (best PASS): −1 PASS, but A9 shipped the project's first false memory; A10 does not.
+
+Non-PASS in A10 (3): `s013` (retrieval — the Brave Search line is absent from every arm),
+`s030` (answer-side: the DB is never named although the naming facts were retrieved), `s032`
+(equivalence hedge).
+
+**Next experiment (specified by the one remaining prompt-level gap):** add a *default-persistence*
+rule for equivalence questions — "if the question asks whether something is the same as before and no
+record shows a change, conclude that it is unchanged" — which targets `s032` without reopening the
+`s016` hole (that rule concerns staying the same, not stopping/resuming). Same config, same
+deterministic retrieval.
