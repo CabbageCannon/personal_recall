@@ -18,7 +18,7 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | 4 | Temporal retrieval | ⏸ |
 | 5 | Entity-aware recall (Person / Alias) | ⏸ |
 | 6 | Multi-evidence / state evolution | ⏸ |
-| 7 | Grounded generation (EvidenceItem, citation, abstention) | 🔄 started: timeline prompt fixed over-abstention (s025) and the s019 hedge; noise floor measured |
+| 7 | Grounded generation (EvidenceItem, citation, abstention) | 🔄 evidence model + citations built; 0 misleading citations, 100%% citation rate; 2 hedge losses pending a commitment clause |
 | 8 | Persistence (PostgreSQL + pgvector) | ⏸ |
 | 9 | Product UI | ⏸ |
 | 10 | Multimodal recall | ⏸ |
@@ -714,4 +714,89 @@ A5/A6/A7 alike; A4 passed it purely because its retrieval happened to contain th
   byte-identical and every experiment remains reproducible from the tag in its filename.
 * Remaining non-PASS in A7: `s013` (retrieval: Brave Search line), `s020`, `s030` (both
   answer-side over/under-specification). The corpus is now close to its ceiling — further retrieval
-  work needs **Corpus v2** to have anything left to measure.
+  work needs **Corpus V2** to have anything left to measure.
+
+---
+
+# Phase 7 — evidence model + citations + citation metrics (A8)
+
+The project's promise is *Answer → Evidence → MemoryEvent → original chat line*, and nothing in the
+harness measured that link: **0/36 answers in every previous arm carried any machine-checkable
+citation**. This phase builds the first half of it.
+
+## What was added
+
+1. **Evidence metadata persisted** (`EVIDENCE_METADATA_FIELDS` in `serialize_sources`): every
+   retrieved source now carries `memory_chunk_id`, `conversation_id`, `start_time`, `end_time`,
+   `participants`, `n_events`. A retrieved chunk is now a full EvidenceItem — e.g.
+   `txt-session-0017`, 2024-10-20 15:10 → 15:58, participants [小王, 我], 14 events — so a citation
+   can be traced back to specific chat lines instead of an opaque chunk index.
+2. **`--answer-prompt cited`**: timeline rules + mandatory `[来源 N]` on every factual statement.
+   It deliberately **overrides** the stock instruction "Don't cite the source id in the answer
+   objects", which is why the rule text says so explicitly.
+3. **`citation_metrics.py`** (+9 tests, 57 total): citation rate, valid citation rate,
+   **citation coverage** (gold lines inside a *cited* chunk), **retrieval coverage** (gold lines
+   inside any *retrieved* chunk — the control), **lexical citation precision**, abstention accuracy.
+
+## Bug caught in the metric (not in the model)
+
+The first measurement reported 36 "invalid" citations, mostly `[来源 0]`. Reading
+`combine_documents` showed the framework renders each chunk as `Source: {index}` with
+`index = range(len(docs))` — i.e. **0-based** — so `[来源 0]` was *correct* and my 1-based mapping
+was wrong. Fixed, with a regression test pinning the convention. (Same lesson as the earlier CRLF
+chunk-count bug: check the convention against the framework's code, not against intuition.)
+
+## Citation metrics (A8)
+
+| metric | A8 (cited) | A7 (uncited) |
+|---|---|---|
+| citation rate | **100 %** | 0 % |
+| citations / invalid | 205 / **0** | 0 / 0 |
+| **citation coverage** (gold in cited chunk) | **77.2 %** | 0 % |
+| retrieval coverage (gold in retrieved chunk) | 84.2 % | 84.2 % |
+| citation precision (lexical lower bound) | 61.0 % | n/a |
+| abstention accuracy | 100 % | 100 % |
+| unsupported claims | 0 % | 0 % |
+
+`citation coverage 77.2 % vs retrieval coverage 84.2 %` is the honest reading: the model cites
+almost everything it uses, and the 7-point gap is evidence it had but did not cite.
+
+## Clean single-variable A/B (a direct payoff of Phase 6)
+
+Retrieval is **byte-identical between A7 and A8 (36/36, order included)** because `no-rewrite`
+removed the LLM from the retrieval path — both arms match the offline deterministic reference. So
+the citation instruction is the *only* difference, and every verdict change is attributable to it.
+
+| arm | PASS | PARTIAL | FAIL | unsupported | misleading citations |
+|---|---|---|---|---|---|
+| A7 (no citations) | **33** | 3 | 0 | 0 % | n/a |
+| A8 (mandatory citations) | **31** | 5 | 0 | 0 % | **0 / 36** |
+
+## The trade-off, diagnosed
+
+Only 2 of 36 verdicts changed, and both losses are **hedges, not citations**:
+
+* `s025` PASS→PARTIAL — the answer assembles the two disambiguating facts **and cites them
+  correctly**, but leads with "无法确认…上下文没有说明…是同一个人" instead of committing.
+* `s032` PASS→PARTIAL — same shape: "无法确定是否同一个" where the gold says 基本是同一个.
+
+Citation honesty is perfect: every `[来源 N]` is in range and non-decorative; expanding each
+citation to `retrieved_sources[N]` confirms the claim is in the cited chunk (36/36
+`citation_supports_claim`). Answers got shorter on 11 queries, but only by dropping A7's
+"依据记录：…" evidence restatement — all of those still PASS.
+
+**Diagnosis:** requiring a source for every claim nudged the model back toward *over-abstention* on
+questions that need a conclusion drawn **across** sources (identity/equivalence). The citation rule
+did not cause the loss; the missing "commit anyway" counterweight did.
+
+## Decision
+
+* **Keep the capability** (evidence fields, `--answer-prompt cited`, metric tooling): verifiable
+  provenance is the product requirement, and it costs no groundedness (0 unsupported, 0 misleading).
+* **The default reference stays A7 for now** (33/36) — the citation variant is not adopted as the
+  reference until the hedging is fixed.
+* **Next experiment (specified by this round's evidence):** extend the citation rule with an
+  explicit commitment clause — "cite, don't hedge: state the conclusion the cited sources support;
+  a conclusion that joins several sources cites all of them" — then re-run A8's config and check
+  whether the 2 hedge losses come back without spending citation honesty. Retrieval is now a
+  controlled constant, so the delta will be attributable.
