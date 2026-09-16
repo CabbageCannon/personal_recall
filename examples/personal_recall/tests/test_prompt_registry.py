@@ -12,7 +12,14 @@ from quivr_core.rag.prompts import (
     register_prompt,
 )
 
-from run_baseline import TIMELINE_PROMPT_ADDENDUM, build_timeline_answer_prompt
+from run_baseline import (
+    CITATION_PROMPT_ADDENDUM,
+    COMMITMENT_PROMPT_ADDENDUM,
+    TIMELINE_PROMPT_ADDENDUM,
+    build_cited_answer_prompt,
+    build_cited_committed_answer_prompt,
+    build_timeline_answer_prompt,
+)
 
 
 @pytest.fixture()
@@ -72,3 +79,21 @@ def test_timeline_prompt_renders_the_same_variables() -> None:
     assert rendered[-1].content.rstrip().endswith(TIMELINE_PROMPT_ADDENDUM.strip())
     # the empty chat-history placeholder renders no message, so just assert the context landed
     assert any("ctx" in message.content for message in rendered)
+
+
+def test_variants_are_strictly_additive_and_independent() -> None:
+    stock = custom_prompts[TemplatePromptName.RAG_ANSWER_PROMPT]
+
+    timeline = build_timeline_answer_prompt(stock).messages[3].prompt.template
+    cited = build_cited_answer_prompt(stock).messages[3].prompt.template
+    committed = build_cited_committed_answer_prompt(stock).messages[3].prompt.template
+
+    assert TIMELINE_PROMPT_ADDENDUM in timeline
+    assert CITATION_PROMPT_ADDENDUM not in timeline
+
+    assert TIMELINE_PROMPT_ADDENDUM in cited and CITATION_PROMPT_ADDENDUM in cited
+    assert COMMITMENT_PROMPT_ADDENDUM not in cited, "the plain cited arm must stay reproducible"
+
+    assert CITATION_PROMPT_ADDENDUM in committed
+    assert COMMITMENT_PROMPT_ADDENDUM in committed
+    assert len(committed) > len(cited) > len(timeline)

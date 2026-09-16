@@ -142,6 +142,25 @@ Citation rules (these override the earlier instruction not to cite source ids):
 """
 
 
+#: Appended on top of the citation rules by `--answer-prompt cited-committed`.
+#:
+#: Measured problem it targets: requiring a source for every claim pushed the model back into
+#: over-abstention on questions whose answer must be *joined across* sources — `s025`
+#: ("无法确认…上下文没有说明…是同一个人") and `s032` ("无法确定是否同一个") both regressed from
+#: PASS to PARTIAL in A8 while citing the supporting facts correctly. The hedges, not the
+#: citations, cost those two queries.
+COMMITMENT_PROMPT_ADDENDUM = """
+Commitment rules (these take priority over the citation rules when they seem to conflict):
+- Citing is not hedging. Give the conclusion that the cited sources support; do not change your
+  answer to "cannot determine" merely because you must cite sources for it.
+- When a conclusion only follows from SEVERAL sources together - for example deciding whether two
+  people mentioned separately are the same person, or whether a plan was later replaced by another
+  one - draw that conclusion yourself and cite all the sources it rests on.
+- Only answer that the records do not show something when no combination of the cited sources
+  supports any conclusion.
+"""
+
+
 def _rebuild_answer_prompt(base: object, extra: str) -> object:
     """Copy ``base``'s messages verbatim and append ``extra`` to the final human message."""
     from langchain_core.prompts import (
@@ -175,6 +194,16 @@ def build_cited_answer_prompt(base: object) -> object:
     )
 
 
+def build_cited_committed_answer_prompt(base: object) -> object:
+    """Citations plus the commitment clause (cite, don't hedge)."""
+    return _rebuild_answer_prompt(
+        base,
+        TIMELINE_PROMPT_ADDENDUM
+        + CITATION_PROMPT_ADDENDUM
+        + COMMITMENT_PROMPT_ADDENDUM,
+    )
+
+
 def register_timeline_answer_prompt() -> None:
     """Install the augmented answer prompt through the framework's registration API.
 
@@ -197,12 +226,25 @@ def register_cited_answer_prompt() -> None:
     )
 
 
+def register_cited_committed_answer_prompt() -> None:
+    """Install the citation prompt plus the commitment clause."""
+    register_prompt(
+        TemplatePromptName.RAG_ANSWER_PROMPT,
+        build_cited_committed_answer_prompt(
+            custom_prompts[TemplatePromptName.RAG_ANSWER_PROMPT]
+        ),
+        override=True,
+    )
+
+
 def register_answer_prompt(variant: str) -> None:
     """Dispatch on the ``--answer-prompt`` value."""
     if variant == "timeline":
         register_timeline_answer_prompt()
     elif variant == "cited":
         register_cited_answer_prompt()
+    elif variant == "cited-committed":
+        register_cited_committed_answer_prompt()
     elif variant != "default":
         raise ValueError(f"unknown answer prompt variant: {variant}")
 
@@ -407,12 +449,13 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--answer-prompt",
-        choices=("default", "timeline", "cited"),
+        choices=("default", "timeline", "cited", "cited-committed"),
         default="default",
         help=(
             "Answer prompt variant (default: %(default)s). 'timeline' appends explicit "
             "time-line reasoning rules targeting over-abstention and evidence misreading; "
-            "'cited' adds mandatory [来源 N] citations on every factual statement."
+            "'cited' adds mandatory [来源 N] citations; 'cited-committed' adds the "
+            "commitment clause (cite, don't hedge) on top."
         ),
     )
     parser.add_argument(
