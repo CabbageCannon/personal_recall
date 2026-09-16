@@ -106,9 +106,8 @@
   },
   {
     "query_id": "q022",
-    "label": "INVALID_QUERY",
-    "unsupported_claim": false,
-    "note": "Expanded corpus also contains a later Cloudflare Pages conversation with the roommate, so the original question no longer has a unique person answer."
+    "label": "PASS",
+    "unsupported_claim": false
   },
   {
     "query_id": "q023",
@@ -117,6 +116,56 @@
   },
   {
     "query_id": "q024",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q025",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q026",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q027",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q028",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q029",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q030",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q031",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q032",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q033",
+    "label": "PASS",
+    "unsupported_claim": false
+  },
+  {
+    "query_id": "q034",
     "label": "PASS",
     "unsupported_claim": false
   }
