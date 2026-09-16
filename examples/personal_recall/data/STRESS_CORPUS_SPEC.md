@@ -188,14 +188,23 @@ Every hard topic needs **near-duplicate messages that are wrong for the query**:
 
 | Part | File | Range | Episodes | Anchor lines | Min chars |
 |---|---|---|---|---|---|
-| 2024 | `part_2024.txt` | 2024-01-01 → 2024-12-31 | E001–E024 (24) | A01–A05, A13, A14, A32 | 11,000 |
-| 2025H1 | `part_2025h1.txt` | 2025-01-01 → 2025-06-30 | E025–E046 (22) | A06, A07, A08, A17, A19, A24, A36, A37 | 9,000 |
-| 2025H2 | `part_2025h2.txt` | 2025-07-01 → 2025-12-31 | E047–E070 (24) | A09, A15, A16, A18, A20, A25, A33, A34, A39, A41 | 10,000 |
-| 2026 | `part_2026.txt` | 2026-01-01 → 2026-08-31 | E071–E098 (28) | A10, A11, A12, A21, A22, A23, A26, A27, A28, A29, A30, A31, A35, A38, A40, A42, A43, A44 | 15,000 |
+| 2024 | `part_2024.txt` | 2024-01-01 → 2024-12-31 | 24 | A01–A05, A13, A14, A32 | 11,000 |
+| 2025H1 | `part_2025h1.txt` | 2025-01-01 → 2025-06-30 | 22 | A06, A07, A08, A17, A19, A24, A36, A37 | 9,000 |
+| 2025H2 | `part_2025h2.txt` | 2025-07-01 → 2025-12-31 | 26 | A09, A15, A16, A18, A20, A25, A33, A34, A39, A41 | 10,000 |
+| 2026 | `part_2026.txt` | 2026-01-01 → 2026-08-31 | 28 | A10, A11, A12, A21, A22, A23, A26, A27, A28, A29, A30, A31, A35, A38, A40, A42, A43, A44 | 15,000 |
 
-Total ≈ 45,000 chars → ≈ 150 chunks at chunk_size=400 / overlap=100.
-(Chinese is 3 bytes/char in UTF-8, so this is ≈135 KB on disk. The chunk target is the
-one that matters: with 150 chunks, Top-5 covers 3.3% of the memory space instead of 21%.)
+The per-part `Min chars` column is the authoring budget. The figures below are the **measured**
+ones (authoritative: `stress_validation.json`) — the pre-authoring estimate in an earlier revision
+of this file (45,000 chars / ≈150 chunks / 98 episodes) was superseded:
+
+* **49,457 chars / 94,262 bytes / 1,216 messages / 100 episodes**
+* **165 chunks** at chunk_size=400 / overlap=100 → Top-5 covers **3.0 %** of the memory space
+  (vs 21.7 % for the 23-chunk small corpus)
+* 44/44 anchor lines present verbatim; timestamps strictly increasing and unique
+
+The corpus was authored as four chronological parts and merged; two self-decoding alias glosses
+(`王哥（就是小王）`, `阿伟（我室友）`) were removed after the independent audit showed they defeated
+the entity-disambiguation queries, so A36/A38 in §4 carry the post-audit wording.
 
 Episode topic guidance per part is given in the writer prompts. Facts come from §3, wording
 is the writer's, anchors are verbatim.
