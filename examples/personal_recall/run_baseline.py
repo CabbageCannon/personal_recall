@@ -124,8 +124,26 @@ Time-line reasoning rules (apply in addition to the rules above):
 """
 
 
-def build_timeline_answer_prompt(base: object) -> object:
-    """Return the augmented answer prompt built from ``base`` (pure, no global mutation)."""
+#: Appended on top of the timeline rules by `--answer-prompt cited`.
+#:
+#: The stock prompt actively forbids this ("Don't cite the source id in the answer
+#: objects"), so the rule below deliberately overrides that line: without a machine-readable
+#: link from a claim to the source it came from, the answer's provenance cannot be verified
+#: against the original chat lines (Phase 7).
+CITATION_PROMPT_ADDENDUM = """
+Citation rules (these override the earlier instruction not to cite source ids):
+- End every factual statement with the source it came from, written exactly as [来源 N],
+  where N is the number shown after "Source: " in the context above.
+- If one statement uses several sources, list them together, e.g. [来源 2][来源 5].
+- Only cite a source that actually supports that statement. Never guess a number; if you
+  are unsure, cite nothing for that statement.
+- Every date you write must come from the source you cite for that statement.
+- If nothing in the context supports the answer, say so instead of citing anything.
+"""
+
+
+def _rebuild_answer_prompt(base: object, extra: str) -> object:
+    """Copy ``base``'s messages verbatim and append ``extra`` to the final human message."""
     from langchain_core.prompts import (
         ChatPromptTemplate,
         HumanMessagePromptTemplate,
@@ -139,9 +157,21 @@ def build_timeline_answer_prompt(base: object) -> object:
             MessagesPlaceholder(variable_name="chat_history"),
             SystemMessagePromptTemplate.from_template(base.messages[2].prompt.template),
             HumanMessagePromptTemplate.from_template(
-                base.messages[3].prompt.template + TIMELINE_PROMPT_ADDENDUM
+                base.messages[3].prompt.template + extra
             ),
         ]
+    )
+
+
+def build_timeline_answer_prompt(base: object) -> object:
+    """Return the augmented answer prompt built from ``base`` (pure, no global mutation)."""
+    return _rebuild_answer_prompt(base, TIMELINE_PROMPT_ADDENDUM)
+
+
+def build_cited_answer_prompt(base: object) -> object:
+    """Timeline rules plus mandatory [来源 N] citations on every factual statement."""
+    return _rebuild_answer_prompt(
+        base, TIMELINE_PROMPT_ADDENDUM + CITATION_PROMPT_ADDENDUM
     )
 
 
@@ -156,6 +186,26 @@ def register_timeline_answer_prompt() -> None:
         build_timeline_answer_prompt(custom_prompts[TemplatePromptName.RAG_ANSWER_PROMPT]),
         override=True,
     )
+
+
+def register_cited_answer_prompt() -> None:
+    """Install the timeline prompt plus mandatory machine-readable citations."""
+    register_prompt(
+        TemplatePromptName.RAG_ANSWER_PROMPT,
+        build_cited_answer_prompt(custom_prompts[TemplatePromptName.RAG_ANSWER_PROMPT]),
+        override=True,
+    )
+
+
+def register_answer_prompt(variant: str) -> None:
+    """Dispatch on the ``--answer-prompt`` value."""
+    if variant == "timeline":
+        register_timeline_answer_prompt()
+    elif variant == "cited":
+        register_cited_answer_prompt()
+    elif variant != "default":
+        raise ValueError(f"unknown answer prompt variant: {variant}")
+
 
 def load_queries(queries_path: Path) -> list[dict]:
     with queries_path.open("r", encoding="utf-8") as f:
@@ -229,20 +279,37 @@ def evaluate_retrieval(
     }
   
 # 把document转成可以写进json的dict
+#: Session fields carried from the retrieval unit into the result file, so a retrieved
+#: chunk is a full EvidenceItem: which conversation session it came from, when it
+#: happened, and who was in it. Without these a citation cannot be traced back to the
+#: original chat lines (Phase 7: Answer -> Evidence -> MemoryEvent -> source chat).
+EVIDENCE_METADATA_FIELDS = (
+    "memory_chunk_id",
+    "conversation_id",
+    "start_time",
+    "end_time",
+    "participants",
+    "n_events",
+    "rerank_score",
+)
+
+
 def serialize_sources(sources: list) -> list[dict]:
     serialized = []
 
     for rank, source in enumerate(sources, start=1):
-        serialized.append(
-            {
-                "rank": rank,
-                "chunk_index": source.metadata.get("chunk_index"),
-                "content": source.page_content,
-                "original_file_name": source.metadata.get(
-                    "original_file_name"
-                ),
-            }
-        )
+        entry = {
+            "rank": rank,
+            "chunk_index": source.metadata.get("chunk_index"),
+            "content": source.page_content,
+            "original_file_name": source.metadata.get(
+                "original_file_name"
+            ),
+        }
+        for field in EVIDENCE_METADATA_FIELDS:
+            if field in source.metadata:
+                entry[field] = source.metadata[field]
+        serialized.append(entry)
 
     return serialized  
 
@@ -340,11 +407,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--answer-prompt",
-        choices=("default", "timeline"),
+        choices=("default", "timeline", "cited"),
         default="default",
         help=(
             "Answer prompt variant (default: %(default)s). 'timeline' appends explicit "
-            "time-line reasoning rules targeting over-abstention and evidence misreading."
+            "time-line reasoning rules targeting over-abstention and evidence misreading; "
+            "'cited' adds mandatory [来源 N] citations on every factual statement."
         ),
     )
     parser.add_argument(
@@ -415,8 +483,7 @@ if __name__ == "__main__":
     else:
         workflow_config = WorkflowConfig(nodes=DefaultWorkflow.RAG.nodes)
 
-    if args.answer_prompt == "timeline":
-        register_timeline_answer_prompt()
+    register_answer_prompt(args.answer_prompt)
     if args.tag:
         results_path = BASE_DIR / f"{args.dataset}_{args.tag}_results.json"
     else:
