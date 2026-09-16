@@ -56,16 +56,31 @@ class DefaultWebSearchTool(str, Enum):
 class DefaultRerankers(str, Enum):
     COHERE = "cohere"
     JINA = "jina"
+    # Runs on the local machine (sentence-transformers CrossEncoder): no API key and
+    # no data leaves the host, which is what private chat-history recall requires.
+    LOCAL = "local"
     # MIXEDBREAD = "mixedbread-ai"
+
+    @property
+    def requires_api_key(self) -> bool:
+        """Whether this supplier authenticates against a hosted service."""
+        return self is not DefaultRerankers.LOCAL
 
     @property
     def default_model(self) -> str:
         # Mapping of suppliers to their default models
-        return {
+        models = {
             self.COHERE: "rerank-v3.5",
             self.JINA: "jina-reranker-v2-base-multilingual",
             # self.MIXEDBREAD: "rmxbai-rerank-large-v1",
-        }[self]
+        }
+        if self not in models:
+            raise ValueError(
+                f"Reranker supplier '{self.value}' has no default model; "
+                f"pass an explicit model (for '{DefaultRerankers.LOCAL.value}', "
+                f"a local cross-encoder path or hub id)."
+            )
+        return models[self]
 
 
 class DefaultModelSuppliers(str, Enum):
@@ -456,8 +471,10 @@ class RerankerConfig(QuivrBaseConfig):
         if self.model is None and self.supplier is not None:
             self.model = self.supplier.default_model
 
-        # Check if the corresponding API key environment variable is set
-        if self.supplier:
+        # Check if the corresponding API key environment variable is set.
+        # Local suppliers run on this machine and authenticate against nothing, so
+        # requiring an API key for them would make them impossible to configure.
+        if self.supplier and self.supplier.requires_api_key:
             api_key_var = f"{normalize_to_env_variable_name(self.supplier)}_API_KEY"
             self.api_key = os.getenv(api_key_var)
 

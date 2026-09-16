@@ -37,6 +37,7 @@ from quivr_core.llm import LLMEndpoint
 from quivr_core.llm_tools.llm_tools import LLMToolFactory
 from quivr_core.rag.entities.chat import ChatHistory
 from quivr_core.rag.entities.config import DefaultRerankers, NodeConfig, RetrievalConfig
+from quivr_core.rag.reranker import LocalCrossEncoderReranker
 from quivr_core.rag.entities.models import (
     LangchainMetadata,
     ParsedRAGChunkResponse,
@@ -296,6 +297,18 @@ class QuivrQARAGLangGraph:
         elif supplier == DefaultRerankers.JINA:
             reranker = JinaRerank(
                 model=model, top_n=top_n, jina_api_key=api_key, **kwargs
+            )
+        elif supplier == DefaultRerankers.LOCAL:
+            if model is None:
+                raise ValueError(
+                    f"Reranker supplier '{DefaultRerankers.LOCAL.value}' requires an "
+                    "explicit model (a local cross-encoder path or hub id)."
+                )
+            reranker = LocalCrossEncoderReranker(
+                model=model,
+                top_n=top_n,
+                relevance_score_threshold=config.relevance_score_threshold,
+                **kwargs,
             )
         else:
             reranker = IdempotentCompressor()
