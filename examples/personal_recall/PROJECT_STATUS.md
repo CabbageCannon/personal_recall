@@ -930,3 +930,59 @@ rule for equivalence questions — "if the question asks whether something is th
 record shows a change, conclude that it is unchanged" — which targets `s032` without reopening the
 `s016` hole (that rule concerns staying the same, not stopping/resuming). Same config, same
 deterministic retrieval.
+
+---
+
+# Phase 8-lite — product surface: `recall.py` with evidence cards
+
+Until now the evidence model had **no consumer**: citations existed only inside eval JSON. The
+engine could prove its numbers but a user could not see *why* an answer was given. This phase adds
+the first product-facing surface.
+
+## What was added
+
+* **`evidence_cards.py`** — resolves an answer's `[来源 N]` citations (0-based, matching
+  `Source: N`) into `EvidenceCard`s: conversation-session id, start/end timestamps, participants,
+  event count, and **the original chat lines themselves**. `render_cards()` prints them;
+  `cards_to_dict()` emits JSON. Deliberately model-free, so it is fully testable offline (9 tests).
+* **`recall.py`** — the CLI:
+  ```powershell
+  python recall.py "小王什么时候推荐我用 Supabase 的？"
+  python recall.py "我之前说的那个数据库最后到底用了没？" --json
+  ```
+  It answers with the **evaluated A10 configuration** (session chunking, hybrid RRF, no-rewrite
+  workflow, cited answer prompt) and prints the evidence cards under the answer. `--show-uncited`
+  also lists retrieved-but-uncited sources when an answer cites nothing.
+* **`recall_demo_output.txt`** — a real transcript (synthetic corpus) showing the answer plus the
+  cards, e.g. for *"小王什么时候推荐我用 Supabase 的？"* the answer cites `[来源 9]` and the card
+  resolves it to `txt-session-0003`, 2024-03-16 20:05–20:44, participants [小王, 我], with the
+  original line *"2024-03-16 20:13 小王: 可以试试 Supabase"*.
+
+This closes the loop the project promises: **Answer → Evidence → MemoryEvent → original chat line**,
+with the first link measured by `citation_metrics.py` and the last two now visible to a user.
+
+## Real bug found and fixed while building it (Core)
+
+`RetrievalConfig.__init__` calls `llm_config.set_api_key(force_reset=True)`, and that flag made
+`set_api_key` **discard an explicitly configured `env_variable_name`** — replacing it with
+`OPENAI_API_KEY` and wiping the key. Any setup pointing an OPENAI-supplier endpoint at another
+provider (this project's DeepSeek configuration) therefore only worked **by accident of ordering**:
+`run_baseline.py` builds the LLM endpoint *before* constructing the `RetrievalConfig`, so the key was
+already read; building them in the natural order (config first) produced
+`openai.OpenAIError: Missing credentials`.
+
+Fix: derive the default variable name only when none was configured, so `force_reset` still re-reads
+the value but no longer clobbers a custom name. Covered by `tests/test_llm_config.py` (4 tests,
+including one that asserts the key survives `RetrievalConfig` construction).
+
+Second, smaller finding: `dotenv.load_dotenv()` resolves `.env` **relative to the calling file**, not
+the CWD, so a relocated CLI can silently load nothing; `recall.py` now loads the repo `.env` by
+explicit path derived from `__file__`.
+
+## Verification
+
+* `72 tests pass` (9 evidence-card + 4 LLM-config new).
+* Neither frozen baseline moved: `baseline_summary.json` and `stress_summary.json` still reproduce
+  **byte-identically** after the Core fix and the `build_workflow_config` extraction.
+* Both demo questions answered with a committed conclusion and traceable cards; `--json` emits
+  `question / answer / evidence[] / retrieved / config`.
