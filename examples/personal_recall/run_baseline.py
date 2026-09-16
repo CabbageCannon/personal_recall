@@ -5,6 +5,7 @@ from time import perf_counter
 from uuid import uuid4
 
 import dotenv
+from langgraph.graph import END, START
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
 from quivr_core import Brain
@@ -18,10 +19,13 @@ from quivr_core.processor.splitter import SplitterConfig
 from quivr_core.rag.entities.config import (
     DefaultModelSuppliers,
     DefaultRerankers,
+    DefaultWorkflow,
     HybridConfig,
     LLMEndpointConfig,
+    NodeConfig,
     RerankerConfig,
     RetrievalConfig,
+    WorkflowConfig,
 )
 from quivr_core.rag.entities.chat import ChatHistory
 from quivr_core.rag.prompts import TemplatePromptName, custom_prompts, register_prompt
@@ -91,6 +95,11 @@ MAX_OUTPUT_TOKENS = 4096
 #: query-rewrite step is an LLM call (measured: identical retrieval configs shared only
 #: 4/36 retrieved evidence sets between runs).
 LLM_TEMPERATURE = 0.3
+
+#: Frozen workflow. 'no-rewrite' drops the LLM query-condensation node; measured at
+#: temperature 0 it still does not make runs reproducible (6/36 shared evidence sets),
+#: so determinism must come from removing the LLM from the retrieval path entirely.
+DEFAULT_WORKFLOW = "rag"
 
 #: Appended to the RAG answer prompt by `--answer-prompt timeline`.
 #:
@@ -358,6 +367,16 @@ if __name__ == "__main__":
             "even the retrieved evidence differ between runs."
         ),
     )
+    parser.add_argument(
+        "--workflow",
+        choices=("rag", "no-rewrite"),
+        default=DEFAULT_WORKFLOW,
+        help=(
+            "Workflow variant (default: %(default)s). 'no-rewrite' drops the LLM "
+            "query-condensation node so retrieval runs on the raw question, which makes "
+            "the retrieval stage deterministic and therefore measurable."
+        ),
+    )
     args = parser.parse_args()
 
     paths = dataset_paths(args.dataset)
@@ -372,15 +391,29 @@ if __name__ == "__main__":
         and args.answer_prompt == "default"
         and args.max_output_tokens == MAX_OUTPUT_TOKENS
         and args.temperature == LLM_TEMPERATURE
+        and args.workflow == DEFAULT_WORKFLOW
     )
     if not is_baseline_config and not args.tag:
         parser.error(
             "--tag is required when --chunking/--k/--rerank-model/--hybrid/--answer-prompt/"
-            "--max-output-tokens/--temperature differ from the frozen baseline "
+            "--max-output-tokens/--temperature/--workflow differ from the frozen baseline "
             f"({DEFAULT_CHUNKING} chunking, k={RETRIEVAL_K}, no reranker, dense only, "
             f"default prompt, {MAX_OUTPUT_TOKENS} output tokens, temperature "
-            f"{LLM_TEMPERATURE}); this keeps {paths['results'].name} untouched."
+            f"{LLM_TEMPERATURE}, {DEFAULT_WORKFLOW} workflow); this keeps "
+            f"{paths['results'].name} untouched."
         )
+
+    if args.workflow == "no-rewrite":
+        workflow_config = WorkflowConfig(
+            nodes=[
+                NodeConfig(name=START, edges=["filter_history"]),
+                NodeConfig(name="filter_history", edges=["retrieve"]),
+                NodeConfig(name="retrieve", edges=["generate_rag"]),
+                NodeConfig(name="generate_rag", edges=[END]),
+            ]
+        )
+    else:
+        workflow_config = WorkflowConfig(nodes=DefaultWorkflow.RAG.nodes)
 
     if args.answer_prompt == "timeline":
         register_timeline_answer_prompt()
@@ -492,6 +525,7 @@ if __name__ == "__main__":
     retrieval_config = RetrievalConfig(
         llm_config=llm_config,
         k=retrieval_k,
+        workflow_config=workflow_config,
         reranker_config=reranker_config,
         hybrid_config=HybridConfig(
             enabled=args.hybrid,
