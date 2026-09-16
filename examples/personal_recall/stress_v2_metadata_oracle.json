@@ -1,0 +1,354 @@
+{
+  "dataset": "stress_v2",
+  "corpus": "D:\\DevPilot\\examples\\personal_recall\\data\\stress_chats_v2.txt",
+  "chunks": 234,
+  "k": 10,
+  "oracle_coverage": {
+    "flat hybrid top-k": 0.7965686274509803,
+    "oracle time filter": 0.8406862745098039,
+    "oracle person filter": 0.7965686274509803,
+    "oracle both": 0.8480392156862745
+  },
+  "rows": [
+    {
+      "query_id": "s001",
+      "category": "exact_fact",
+      "n_candidates_time": 1,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 1.0,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 1.0,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s002",
+      "category": "exact_fact",
+      "n_candidates_time": 1,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 1.0,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 1.0,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s003",
+      "category": "cross_message",
+      "n_candidates_time": 4,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 1.0,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 1.0,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s004",
+      "category": "exact_keyword",
+      "n_candidates_time": 1,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 1.0,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 1.0,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s005",
+      "category": "exact_keyword",
+      "n_candidates_time": 1,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 1.0,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 1.0,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s006",
+      "category": "semantic_recall",
+      "n_candidates_time": 1,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 1.0,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 1.0,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s007",
+      "category": "semantic_recall",
+      "n_candidates_time": 18,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 1.0,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 1.0,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s008",
+      "category": "semantic_recall",
+      "n_candidates_time": 47,
+      "n_candidates_person": 27,
+      "cov::flat hybrid top-k": 1.0,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 1.0,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s009",
+      "category": "person_recall",
+      "n_candidates_time": 1,
+      "n_candidates_person": 21,
+      "cov::flat hybrid top-k": 1.0,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 1.0,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s010",
+      "category": "person_recall",
+      "n_candidates_time": 29,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 1.0,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 1.0,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s011",
+      "category": "time_recall",
+      "n_candidates_time": 77,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 1.0,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 1.0,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s012",
+      "category": "time_recall",
+      "n_candidates_time": 1,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 1.0,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 1.0,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s013",
+      "category": "temporal_state_change",
+      "n_candidates_time": 97,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 0.75,
+      "cov::oracle time filter": 0.75,
+      "cov::oracle person filter": 0.75,
+      "cov::oracle both": 0.75
+    },
+    {
+      "query_id": "s014",
+      "category": "temporal_state_change",
+      "n_candidates_time": 190,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 1.0,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 1.0,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s015",
+      "category": "temporal_state_change",
+      "n_candidates_time": 2,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 1.0,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 1.0,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s016",
+      "category": "temporal_state_change",
+      "n_candidates_time": 154,
+      "n_candidates_person": 27,
+      "cov::flat hybrid top-k": 0.75,
+      "cov::oracle time filter": 0.75,
+      "cov::oracle person filter": 0.75,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s017",
+      "category": "plan_vs_actual",
+      "n_candidates_time": 12,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 1.0,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 1.0,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s018",
+      "category": "plan_vs_actual",
+      "n_candidates_time": 5,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 1.0,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 1.0,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s019",
+      "category": "plan_vs_actual",
+      "n_candidates_time": 17,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 0.75,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 0.75,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s020",
+      "category": "latest_state",
+      "n_candidates_time": 194,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 0.25,
+      "cov::oracle time filter": 0.25,
+      "cov::oracle person filter": 0.25,
+      "cov::oracle both": 0.25
+    },
+    {
+      "query_id": "s021",
+      "category": "latest_state",
+      "n_candidates_time": 21,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 0.5,
+      "cov::oracle time filter": 0.5,
+      "cov::oracle person filter": 0.5,
+      "cov::oracle both": 0.5
+    },
+    {
+      "query_id": "s022",
+      "category": "latest_state",
+      "n_candidates_time": 26,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 1.0,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 1.0,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s023",
+      "category": "earliest_state",
+      "n_candidates_time": 174,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 0.25,
+      "cov::oracle time filter": 0.25,
+      "cov::oracle person filter": 0.25,
+      "cov::oracle both": 0.25
+    },
+    {
+      "query_id": "s024",
+      "category": "earliest_state",
+      "n_candidates_time": 150,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 0.25,
+      "cov::oracle time filter": 0.25,
+      "cov::oracle person filter": 0.25,
+      "cov::oracle both": 0.25
+    },
+    {
+      "query_id": "s025",
+      "category": "entity_disambiguation",
+      "n_candidates_time": 145,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 0.25,
+      "cov::oracle time filter": 0.75,
+      "cov::oracle person filter": 0.25,
+      "cov::oracle both": 0.75
+    },
+    {
+      "query_id": "s026",
+      "category": "entity_disambiguation",
+      "n_candidates_time": 93,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 0.75,
+      "cov::oracle time filter": 0.75,
+      "cov::oracle person filter": 0.75,
+      "cov::oracle both": 0.75
+    },
+    {
+      "query_id": "s027",
+      "category": "entity_disambiguation",
+      "n_candidates_time": 194,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 0.75,
+      "cov::oracle time filter": 0.75,
+      "cov::oracle person filter": 0.75,
+      "cov::oracle both": 0.75
+    },
+    {
+      "query_id": "s028",
+      "category": "negative_evidence",
+      "n_candidates_time": 20,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 1.0,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 1.0,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s029",
+      "category": "negative_evidence",
+      "n_candidates_time": 37,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 0.75,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 0.75,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s030",
+      "category": "multi_evidence",
+      "n_candidates_time": 20,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 0.25,
+      "cov::oracle time filter": 0.25,
+      "cov::oracle person filter": 0.25,
+      "cov::oracle both": 0.25
+    },
+    {
+      "query_id": "s031",
+      "category": "multi_evidence",
+      "n_candidates_time": 78,
+      "n_candidates_person": 27,
+      "cov::flat hybrid top-k": 0.75,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 0.75,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s032",
+      "category": "implicit_reference",
+      "n_candidates_time": 92,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 0.3333333333333333,
+      "cov::oracle time filter": 0.3333333333333333,
+      "cov::oracle person filter": 0.3333333333333333,
+      "cov::oracle both": 0.3333333333333333
+    },
+    {
+      "query_id": "s033",
+      "category": "implicit_reference",
+      "n_candidates_time": 29,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 1.0,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 1.0,
+      "cov::oracle both": 1.0
+    },
+    {
+      "query_id": "s034",
+      "category": "cross_time",
+      "n_candidates_time": 194,
+      "n_candidates_person": 234,
+      "cov::flat hybrid top-k": 0.75,
+      "cov::oracle time filter": 1.0,
+      "cov::oracle person filter": 0.75,
+      "cov::oracle both": 1.0
+    }
+  ]
+}

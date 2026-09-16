@@ -1,0 +1,309 @@
+{
+  "dataset": "stress_v2",
+  "corpus": "D:\\DevPilot\\examples\\personal_recall\\data\\stress_chats_v2.txt",
+  "chunks": 234,
+  "k": 10,
+  "hybrid_pool": 30,
+  "pool": 50,
+  "rerank_model": "D:\\AIModels\\bge-reranker-base",
+  "reproduction_check": [
+    36,
+    0,
+    36
+  ],
+  "coverage": {
+    "hybrid RRF top-10 (A10)": 0.7965686274509803,
+    "rerank pool 50 -> top-10": 0.7303921568627451,
+    "pool 50 ceiling": 0.9313725490196079
+  },
+  "rows": [
+    {
+      "query_id": "s001",
+      "category": "exact_fact",
+      "answerable": true,
+      "cov_hybrid_k": 1.0,
+      "cov_rerank_pool": 1.0,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s002",
+      "category": "exact_fact",
+      "answerable": true,
+      "cov_hybrid_k": 1.0,
+      "cov_rerank_pool": 1.0,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s003",
+      "category": "cross_message",
+      "answerable": true,
+      "cov_hybrid_k": 1.0,
+      "cov_rerank_pool": 1.0,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s004",
+      "category": "exact_keyword",
+      "answerable": true,
+      "cov_hybrid_k": 1.0,
+      "cov_rerank_pool": 1.0,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s005",
+      "category": "exact_keyword",
+      "answerable": true,
+      "cov_hybrid_k": 1.0,
+      "cov_rerank_pool": 1.0,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s006",
+      "category": "semantic_recall",
+      "answerable": true,
+      "cov_hybrid_k": 1.0,
+      "cov_rerank_pool": 0.0,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s007",
+      "category": "semantic_recall",
+      "answerable": true,
+      "cov_hybrid_k": 1.0,
+      "cov_rerank_pool": 0.5,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s008",
+      "category": "semantic_recall",
+      "answerable": true,
+      "cov_hybrid_k": 1.0,
+      "cov_rerank_pool": 1.0,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s009",
+      "category": "person_recall",
+      "answerable": true,
+      "cov_hybrid_k": 1.0,
+      "cov_rerank_pool": 1.0,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s010",
+      "category": "person_recall",
+      "answerable": true,
+      "cov_hybrid_k": 1.0,
+      "cov_rerank_pool": 1.0,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s011",
+      "category": "time_recall",
+      "answerable": true,
+      "cov_hybrid_k": 1.0,
+      "cov_rerank_pool": 1.0,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s012",
+      "category": "time_recall",
+      "answerable": true,
+      "cov_hybrid_k": 1.0,
+      "cov_rerank_pool": 1.0,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s013",
+      "category": "temporal_state_change",
+      "answerable": true,
+      "cov_hybrid_k": 0.75,
+      "cov_rerank_pool": 0.75,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s014",
+      "category": "temporal_state_change",
+      "answerable": true,
+      "cov_hybrid_k": 1.0,
+      "cov_rerank_pool": 1.0,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s015",
+      "category": "temporal_state_change",
+      "answerable": true,
+      "cov_hybrid_k": 1.0,
+      "cov_rerank_pool": 1.0,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s016",
+      "category": "temporal_state_change",
+      "answerable": true,
+      "cov_hybrid_k": 0.75,
+      "cov_rerank_pool": 1.0,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s017",
+      "category": "plan_vs_actual",
+      "answerable": true,
+      "cov_hybrid_k": 1.0,
+      "cov_rerank_pool": 1.0,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s018",
+      "category": "plan_vs_actual",
+      "answerable": true,
+      "cov_hybrid_k": 1.0,
+      "cov_rerank_pool": 1.0,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s019",
+      "category": "plan_vs_actual",
+      "answerable": true,
+      "cov_hybrid_k": 0.75,
+      "cov_rerank_pool": 0.75,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s020",
+      "category": "latest_state",
+      "answerable": true,
+      "cov_hybrid_k": 0.25,
+      "cov_rerank_pool": 0.25,
+      "pool_ceiling": 0.75
+    },
+    {
+      "query_id": "s021",
+      "category": "latest_state",
+      "answerable": true,
+      "cov_hybrid_k": 0.5,
+      "cov_rerank_pool": 0.5,
+      "pool_ceiling": 0.5
+    },
+    {
+      "query_id": "s022",
+      "category": "latest_state",
+      "answerable": true,
+      "cov_hybrid_k": 1.0,
+      "cov_rerank_pool": 1.0,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s023",
+      "category": "earliest_state",
+      "answerable": true,
+      "cov_hybrid_k": 0.25,
+      "cov_rerank_pool": 0.25,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s024",
+      "category": "earliest_state",
+      "answerable": true,
+      "cov_hybrid_k": 0.25,
+      "cov_rerank_pool": 0.25,
+      "pool_ceiling": 0.5
+    },
+    {
+      "query_id": "s025",
+      "category": "entity_disambiguation",
+      "answerable": true,
+      "cov_hybrid_k": 0.25,
+      "cov_rerank_pool": 0.25,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s026",
+      "category": "entity_disambiguation",
+      "answerable": true,
+      "cov_hybrid_k": 0.75,
+      "cov_rerank_pool": 0.75,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s027",
+      "category": "entity_disambiguation",
+      "answerable": true,
+      "cov_hybrid_k": 0.75,
+      "cov_rerank_pool": 0.5,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s028",
+      "category": "negative_evidence",
+      "answerable": true,
+      "cov_hybrid_k": 1.0,
+      "cov_rerank_pool": 1.0,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s029",
+      "category": "negative_evidence",
+      "answerable": true,
+      "cov_hybrid_k": 0.75,
+      "cov_rerank_pool": 0.75,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s030",
+      "category": "multi_evidence",
+      "answerable": true,
+      "cov_hybrid_k": 0.25,
+      "cov_rerank_pool": 0.0,
+      "pool_ceiling": 0.25
+    },
+    {
+      "query_id": "s031",
+      "category": "multi_evidence",
+      "answerable": true,
+      "cov_hybrid_k": 0.75,
+      "cov_rerank_pool": 0.5,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s032",
+      "category": "implicit_reference",
+      "answerable": true,
+      "cov_hybrid_k": 0.3333333333333333,
+      "cov_rerank_pool": 0.3333333333333333,
+      "pool_ceiling": 0.6666666666666666
+    },
+    {
+      "query_id": "s033",
+      "category": "implicit_reference",
+      "answerable": true,
+      "cov_hybrid_k": 1.0,
+      "cov_rerank_pool": 1.0,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s034",
+      "category": "cross_time",
+      "answerable": true,
+      "cov_hybrid_k": 0.75,
+      "cov_rerank_pool": 0.5,
+      "pool_ceiling": 1.0
+    },
+    {
+      "query_id": "s035",
+      "category": "unanswerable",
+      "answerable": false,
+      "cov_hybrid_k": null,
+      "cov_rerank_pool": null,
+      "pool_ceiling": null
+    },
+    {
+      "query_id": "s036",
+      "category": "unanswerable",
+      "answerable": false,
+      "cov_hybrid_k": null,
+      "cov_rerank_pool": null,
+      "pool_ceiling": null
+    }
+  ]
+}

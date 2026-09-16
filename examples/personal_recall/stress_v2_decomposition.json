@@ -1,0 +1,285 @@
+{
+  "dataset": "stress_v2",
+  "corpus": "D:\\DevPilot\\examples\\personal_recall\\data\\stress_chats_v2.txt",
+  "chunks": 234,
+  "k": 10,
+  "coverage": {
+    "flat question, hybrid top-k (A10)": 0.7965686274509803,
+    "sub-question RRF fusion, top-k": 0.7892156862745098,
+    "best single sub-question, top-k": 0.8259803921568627
+  },
+  "rows": [
+    {
+      "query_id": "s001",
+      "category": "exact_fact",
+      "n_sub_questions": 4,
+      "cov_flat": 1.0,
+      "cov_decomposition": 1.0,
+      "cov_best_single_sub": 1.0
+    },
+    {
+      "query_id": "s002",
+      "category": "exact_fact",
+      "n_sub_questions": 4,
+      "cov_flat": 1.0,
+      "cov_decomposition": 1.0,
+      "cov_best_single_sub": 1.0
+    },
+    {
+      "query_id": "s003",
+      "category": "cross_message",
+      "n_sub_questions": 4,
+      "cov_flat": 1.0,
+      "cov_decomposition": 1.0,
+      "cov_best_single_sub": 1.0
+    },
+    {
+      "query_id": "s004",
+      "category": "exact_keyword",
+      "n_sub_questions": 4,
+      "cov_flat": 1.0,
+      "cov_decomposition": 1.0,
+      "cov_best_single_sub": 1.0
+    },
+    {
+      "query_id": "s005",
+      "category": "exact_keyword",
+      "n_sub_questions": 3,
+      "cov_flat": 1.0,
+      "cov_decomposition": 1.0,
+      "cov_best_single_sub": 1.0
+    },
+    {
+      "query_id": "s006",
+      "category": "semantic_recall",
+      "n_sub_questions": 3,
+      "cov_flat": 1.0,
+      "cov_decomposition": 1.0,
+      "cov_best_single_sub": 1.0
+    },
+    {
+      "query_id": "s007",
+      "category": "semantic_recall",
+      "n_sub_questions": 4,
+      "cov_flat": 1.0,
+      "cov_decomposition": 1.0,
+      "cov_best_single_sub": 1.0
+    },
+    {
+      "query_id": "s008",
+      "category": "semantic_recall",
+      "n_sub_questions": 4,
+      "cov_flat": 1.0,
+      "cov_decomposition": 1.0,
+      "cov_best_single_sub": 1.0
+    },
+    {
+      "query_id": "s009",
+      "category": "person_recall",
+      "n_sub_questions": 2,
+      "cov_flat": 1.0,
+      "cov_decomposition": 1.0,
+      "cov_best_single_sub": 1.0
+    },
+    {
+      "query_id": "s010",
+      "category": "person_recall",
+      "n_sub_questions": 4,
+      "cov_flat": 1.0,
+      "cov_decomposition": 1.0,
+      "cov_best_single_sub": 1.0
+    },
+    {
+      "query_id": "s011",
+      "category": "time_recall",
+      "n_sub_questions": 4,
+      "cov_flat": 1.0,
+      "cov_decomposition": 1.0,
+      "cov_best_single_sub": 1.0
+    },
+    {
+      "query_id": "s012",
+      "category": "time_recall",
+      "n_sub_questions": 3,
+      "cov_flat": 1.0,
+      "cov_decomposition": 1.0,
+      "cov_best_single_sub": 1.0
+    },
+    {
+      "query_id": "s013",
+      "category": "temporal_state_change",
+      "n_sub_questions": 4,
+      "cov_flat": 0.75,
+      "cov_decomposition": 0.75,
+      "cov_best_single_sub": 0.5
+    },
+    {
+      "query_id": "s014",
+      "category": "temporal_state_change",
+      "n_sub_questions": 3,
+      "cov_flat": 1.0,
+      "cov_decomposition": 1.0,
+      "cov_best_single_sub": 1.0
+    },
+    {
+      "query_id": "s015",
+      "category": "temporal_state_change",
+      "n_sub_questions": 3,
+      "cov_flat": 1.0,
+      "cov_decomposition": 1.0,
+      "cov_best_single_sub": 1.0
+    },
+    {
+      "query_id": "s016",
+      "category": "temporal_state_change",
+      "n_sub_questions": 4,
+      "cov_flat": 0.75,
+      "cov_decomposition": 0.75,
+      "cov_best_single_sub": 1.0
+    },
+    {
+      "query_id": "s017",
+      "category": "plan_vs_actual",
+      "n_sub_questions": 4,
+      "cov_flat": 1.0,
+      "cov_decomposition": 1.0,
+      "cov_best_single_sub": 1.0
+    },
+    {
+      "query_id": "s018",
+      "category": "plan_vs_actual",
+      "n_sub_questions": 3,
+      "cov_flat": 1.0,
+      "cov_decomposition": 1.0,
+      "cov_best_single_sub": 1.0
+    },
+    {
+      "query_id": "s019",
+      "category": "plan_vs_actual",
+      "n_sub_questions": 3,
+      "cov_flat": 0.75,
+      "cov_decomposition": 1.0,
+      "cov_best_single_sub": 1.0
+    },
+    {
+      "query_id": "s020",
+      "category": "latest_state",
+      "n_sub_questions": 4,
+      "cov_flat": 0.25,
+      "cov_decomposition": 0.25,
+      "cov_best_single_sub": 0.5
+    },
+    {
+      "query_id": "s021",
+      "category": "latest_state",
+      "n_sub_questions": 3,
+      "cov_flat": 0.5,
+      "cov_decomposition": 0.5,
+      "cov_best_single_sub": 0.5
+    },
+    {
+      "query_id": "s022",
+      "category": "latest_state",
+      "n_sub_questions": 4,
+      "cov_flat": 1.0,
+      "cov_decomposition": 0.75,
+      "cov_best_single_sub": 0.75
+    },
+    {
+      "query_id": "s023",
+      "category": "earliest_state",
+      "n_sub_questions": 4,
+      "cov_flat": 0.25,
+      "cov_decomposition": 0.25,
+      "cov_best_single_sub": 0.25
+    },
+    {
+      "query_id": "s024",
+      "category": "earliest_state",
+      "n_sub_questions": 4,
+      "cov_flat": 0.25,
+      "cov_decomposition": 0.25,
+      "cov_best_single_sub": 0.5
+    },
+    {
+      "query_id": "s025",
+      "category": "entity_disambiguation",
+      "n_sub_questions": 3,
+      "cov_flat": 0.25,
+      "cov_decomposition": 0.75,
+      "cov_best_single_sub": 0.5
+    },
+    {
+      "query_id": "s026",
+      "category": "entity_disambiguation",
+      "n_sub_questions": 4,
+      "cov_flat": 0.75,
+      "cov_decomposition": 0.75,
+      "cov_best_single_sub": 0.75
+    },
+    {
+      "query_id": "s027",
+      "category": "entity_disambiguation",
+      "n_sub_questions": 3,
+      "cov_flat": 0.75,
+      "cov_decomposition": 0.75,
+      "cov_best_single_sub": 0.75
+    },
+    {
+      "query_id": "s028",
+      "category": "negative_evidence",
+      "n_sub_questions": 3,
+      "cov_flat": 1.0,
+      "cov_decomposition": 0.0,
+      "cov_best_single_sub": 0.5
+    },
+    {
+      "query_id": "s029",
+      "category": "negative_evidence",
+      "n_sub_questions": 3,
+      "cov_flat": 0.75,
+      "cov_decomposition": 0.75,
+      "cov_best_single_sub": 0.75
+    },
+    {
+      "query_id": "s030",
+      "category": "multi_evidence",
+      "n_sub_questions": 4,
+      "cov_flat": 0.25,
+      "cov_decomposition": 0.25,
+      "cov_best_single_sub": 0.5
+    },
+    {
+      "query_id": "s031",
+      "category": "multi_evidence",
+      "n_sub_questions": 4,
+      "cov_flat": 0.75,
+      "cov_decomposition": 1.0,
+      "cov_best_single_sub": 1.0
+    },
+    {
+      "query_id": "s032",
+      "category": "implicit_reference",
+      "n_sub_questions": 3,
+      "cov_flat": 0.3333333333333333,
+      "cov_decomposition": 0.3333333333333333,
+      "cov_best_single_sub": 0.3333333333333333
+    },
+    {
+      "query_id": "s033",
+      "category": "implicit_reference",
+      "n_sub_questions": 4,
+      "cov_flat": 1.0,
+      "cov_decomposition": 1.0,
+      "cov_best_single_sub": 1.0
+    },
+    {
+      "query_id": "s034",
+      "category": "cross_time",
+      "n_sub_questions": 4,
+      "cov_flat": 0.75,
+      "cov_decomposition": 0.75,
+      "cov_best_single_sub": 1.0
+    }
+  ]
+}

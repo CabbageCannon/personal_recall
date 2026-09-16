@@ -20,6 +20,7 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | 6     | Multi-evidence / state evolution                               | ⏸                                                                                                                           |
 | 7     | Grounded generation (EvidenceItem, citation, abstention)       | ✅ done — A10 adopted: 100%% citation rate, 0 misleading, 0 unsupported, PASS 91.7%%                                         |
 | M2    | **Corpus v2: distractor pack for measurement headroom**        | ✅ done — v1 saturated (Hit@10 100%%); v2 costs −6.62 coverage pts at 2.3× the space, still 0 retrieval misses, 0 false memories |
+| M3    | **Selector sweep on v2 (re-rank / decomposition / metadata)**  | ✅ done — all three rejected or neutral; loss is ranking-limited; only measured lever left is budget (k=20 → +7.3 coverage pts) |
 | 8     | Persistence (PostgreSQL + pgvector)                            | ⏸                                                                                                                           |
 | 9     | Product UI                                                     | ⏸                                                                                                                           |
 | 10    | Multimodal recall                                              | ⏸                                                                                                                           |
@@ -1105,3 +1106,106 @@ budget*, but that negative was taken on a corpus with Hit@10 = 100 %, where the 
 to demonstrate anything. On v2 there are 8 insufficient-evidence queries to win, so it is worth re-testing
 offline (free, deterministic) before any paid arm — with the pre-registered target of converting the 6
 flips back to PASS **without** introducing a single unsupported claim.
+
+---
+
+# Phase M3 — better selectors: three mechanisms tested, none recovers the loss (all rejected); the only lever left is budget
+
+## First, attribute the loss correctly
+
+`probe_recall_at_k.py` on corpus v2 (dense, session chunks) answers *where* the evidence sits:
+
+| group | cov@10 | cov@20 | cov@50 | cov@100 | cov@234 |
+| ----- | ------ | ------ | ------ | ------- | ------- |
+| all answerable | 73.0 % | 81.9 % | 92.2 % | 97.1 % | 100 % |
+| the 8 evidence-insufficient | **47.9 %** | 54.2 % | **85.4 %** | 93.8 % | 100 % |
+
+Verdict: **ranking/window-limited, not representation-limited.** For 7 of the 8 problem queries the
+decisive gold line is sitting at rank 20–50, inside the reach of a wider pool. The question is therefore
+not "can we retrieve it" but "can we promote it into the 10 slots we show the model" — which is why three
+*selector* mechanisms were tested rather than another chunking or memory change.
+
+## The instrument had to be trustworthy first
+
+`probe_pool_rerank.py` reproduces the runner's hybrid retrieval offline (each retriever contributes 30
+candidates, weighted RRF with rank starting at 1, dedup by content, stable sort, truncate to k) and
+**verifies itself against a recorded run before any comparison is reported**:
+
+```
+reproduction check vs stress_v2_a10_results.json: identical 36/36
+```
+
+Every number below comes from a probe whose reproduction matched the real A10 run chunk-index-for-chunk-index.
+
+## Three selectors, all measured at 10 slots
+
+| strategy | coverage@10 | delta | up / down | verdict |
+| -------- | ----------- | ----- | --------- | ------- |
+| hybrid RRF top-10 (A10 reference) | **79.7 %** | — | — | — |
+| cross-encoder re-rank, pool 50 → 10 | 73.0 % | **−6.62** | 1 / 6 | **rejected** |
+| sub-question RRF fusion (mean 3.6 sub-questions) | 78.9 % | −0.74 | 3 / 2 | no gain |
+| best single sub-question (**oracle**) | 82.6 % | +2.9 | — | not deployable |
+| oracle **person** filter | 79.7 % | **+0.00** | — | dead |
+| oracle **time** filter | 84.1 % | +4.41 | — | ceiling only |
+| oracle both | 84.8 % | +5.15 | — | — |
+
+**1. Re-ranking is negative on v2 too, and now with headroom present.** Phase 2 rejected it on v1 where
+only ~15 points separated k=10 from k=50. On v2 the pool holds **93.1 %** of the gold while top-10 delivers
+79.7 % — 13.4 points lost purely inside the ranking — and a general cross-encoder still makes it *worse*
+(`s006` 1.000 → 0.000, `s007` 1.000 → 0.500, `s030` 0.250 → 0.000). It also loses at k=20
+(82.8 % vs 87.0 %, −4.17, 3 up / 6 down), so the rejection is not an artifact of the budget. **The
+evidence is retrieved; this re-ranker simply ranks it worse than RRF does.**
+
+**2. Sub-question decomposition does not help, but it does not hurt either.** At an honestly matched
+budget (every strategy cut to the same 10 slots) fusing 3.6 sub-question rankings is −0.74 pts with 3
+gains and 2 regressions — i.e. **neutral**, inside the project's established noise floor. The Phase 3
+negative is therefore confirmed *and* corrected in character: decomposition is not harmful, it is simply
+not a win. The oracle bound says why there is nothing to win: even *picking the best single sub-question
+using the gold answer* only reaches 82.6 %, and that is not available at inference time.
+
+**3. Metadata filtering has almost no headroom, and none where it is needed.** Chunk `participants` carry
+**no signal at all**: a perfect person filter keeps 209.5 of 234 chunks and moves coverage by exactly
+**+0.00**. A perfect *time* window does better (+4.41, keeping 62.5 chunks) but it is an **upper bound
+requiring a flawless extractor**, and it leaves the four worst queries completely untouched
+(`s020` 0.250, `s023` 0.250, `s030` 0.250, `s032` 0.333 all unchanged). Building a temporal extractor
+would buy at most a fraction of +4.41 on queries that are not the problem — so it is **not worth building**.
+
+## A bug my own test caught, and the number it invalidated
+
+`rrf_ranking` zipped the rank lists against a fixed **2-element** weights tuple, so any call with three or
+more lists silently discarded everything after the second. The re-rank and metadata probes fuse exactly
+two lists, so they were unaffected (and their 36/36 reproduction checks confirm it) — but
+`probe_decomposition.py` passes ~3.6 sub-question lists, and its first measurement read **−7.60 pts**.
+
+After the fix the same experiment reads **−0.74 pts**. The dramatic-looking "decomposition destroys
+coverage" result was an artifact of the harness, not a property of the method; reporting it would have
+been a fabrication of a negative result.
+
+`tests/test_probe_fusion.py` now pins `rrf_ranking` against LangChain's own
+`weighted_reciprocal_rank` — disjoint lists, overlapping lists, identical lists, an empty list from a
+retriever that matched nothing, and the 3-list tie case that exposed the bug. **6 tests.**
+
+## Decision: no selector is adopted. The only measured lever left is budget.
+
+Three mechanisms were tested with headroom present, and the oracle bounds say there is little left to
+recover: the failing evidence is *in* the pool and every candidate-selection device measured either
+loses it or breaks even. Spending more rounds on selectors is no longer evidence-driven.
+
+What *is* measured and deployable, with no new machinery:
+
+| retrieval | coverage@k |
+| --------- | ---------- |
+| hybrid RRF top-10 (A10, current reference) | **79.7 %** |
+| hybrid RRF top-20 | **87.0 % (+7.3 pts)** |
+
+That is a larger gain than every mechanism tested in this phase combined, and it is a pure budget
+trade-off (context length and latency), not a modelling claim.
+
+## Next step (pre-registered)
+
+**A11 = A10 with `--k 20`** — same corpus, hybrid RRF, no-rewrite, `cited-narrow`, temperature 0. The
+prediction is +7.3 points of evidence coverage; the pre-registered criterion is that PASS improves
+**without any increase in unsupported claims and without citation honesty regressing**. The risk is
+explicit and real: more slots also means more near-duplicate distractors in context, and this project has
+already measured that a *stronger* prompt can buy PASS at the cost of groundedness (A9). If A11 buys PASS
+by spending groundedness it will be rejected exactly as A9 was.
