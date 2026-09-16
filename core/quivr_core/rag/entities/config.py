@@ -366,8 +366,12 @@ class LLMEndpointConfig(QuivrBaseConfig):
         if not self.supplier:
             return
 
-        # Check if the corresponding API key environment variable is set
-        if force_reset or not self.env_variable_name:
+        # Only derive a variable name when the caller did not configure one. Deriving it on
+        # every reset discards an explicit `env_variable_name`, which silently broke setups
+        # that point an OPENAI-supplier endpoint at another provider's key (e.g.
+        # env_variable_name="DEEPSEEK_API_KEY"): `RetrievalConfig.__init__` resets the key, so
+        # the custom name was replaced by "OPENAI_API_KEY" and the key was lost.
+        if not self.env_variable_name:
             self.env_variable_name = (
                 f"{normalize_to_env_variable_name(self.supplier)}_API_KEY"
             )
