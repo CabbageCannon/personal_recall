@@ -277,5 +277,131 @@
     "relevant_evidence": [],
     "category": "unanswerable",
     "answerable": false
+  },
+  {
+    "id": "q025",
+    "question": "室友后来还一直用 Tailscale 连家里的 NAS 吗？",
+    "expected_answer": "没有。2025年他说家里的 NAS 使用 Tailscale，但到2026年已经换成了 WireGuard。",
+    "relevant_evidence": [
+      "[2025-03-09 22:05] 室友: 你要不装个 Tailscale",
+      "[2025-03-09 22:10] 室友: 我之前连家里的 NAS 也是这么弄的",
+      "[2026-04-06 21:34] 室友: 我最近把家里 NAS 换成 WireGuard 了"
+    ],
+    "category": "cross_message",
+    "answerable": true
+  },
+  {
+    "id": "q026",
+    "question": "我后来有没有正式用 Neon 做过项目？",
+    "expected_answer": "没有。后来只测试过 Neon 的连接，但没有专门用它做正式项目。",
+    "relevant_evidence": [
+      "[2026-02-26 18:39] 同学A: Neon 后来用了没？",
+      "[2026-02-26 18:40] 我: 之前测试过连接，但没专门拿它做正式项目"
+    ],
+    "category": "semantic_recall",
+    "answerable": true
+  },
+  {
+    "id": "q027",
+    "question": "2024年室友提到的日料店和2026年小王提到的日料店分别叫什么？",
+    "expected_answer": "2024年室友提到的是青岚，2026年小王提到的是川海。",
+    "relevant_evidence": [
+      "[2024-06-22 12:19] 室友: 学校北门新开了家日料",
+      "[2024-06-22 12:20] 我: 叫什么？",
+      "[2024-06-22 12:21] 室友: 好像叫青岚，我也是昨天才看到",
+      "[2026-01-09 13:12] 小王: 寒假回来要不要去吃那家日料",
+      "[2026-01-09 13:13] 我: 哪家？",
+      "[2026-01-09 13:14] 小王: 东门新开的“川海”"
+    ],
+    "category": "cross_message",
+    "answerable": true
+  },
+  {
+    "id": "q028",
+    "question": "Cloudflare Pages 和 Tailscale 在聊天里分别是用来解决什么问题的？",
+    "expected_answer": "Cloudflare Pages 用来部署前端网页，Tailscale 用来让不同网络中的机器互相访问。",
+    "relevant_evidence": [
+      "[2025-03-09 22:04] 我: 对，但是两个网络不一样，直接 ssh 过去连不上",
+      "[2025-03-09 22:05] 室友: 你要不装个 Tailscale",
+      "[2025-03-09 22:07] 室友: 不麻烦，几台机器登录之后基本就能互相访问了",
+      "[2025-08-12 20:07] 室友: 你是 Pages 还是 Tunnel？",
+      "[2025-08-12 20:08] 我: Pages，这次不是内网穿透",
+      "[2025-08-12 20:10] 室友: 哦，那跟之前说的 Tailscale 也不是一个场景",
+      "[2025-08-12 20:11] 我: 对，一个是部署网页，一个是机器之间互相访问"
+    ],
+    "category": "semantic_recall",
+    "answerable": true
+  },
+  {
+    "id": "q029",
+    "question": "我和张三去长沙这件事，第二年是谁再次提到的？",
+    "expected_answer": "小王。",
+    "relevant_evidence": [
+      "[2025-04-27 10:24] 小王: 去年你不是还跑长沙了吗",
+      "[2025-04-27 10:25] 我: 对，去年跟张三去的"
+    ],
+    "category": "person_recall",
+    "answerable": true
+  },
+  {
+    "id": "q030",
+    "question": "元旦去深圳这件事最后确定了吗？",
+    "expected_answer": "没有。聊天里只是提出去深圳，后来又说先别定、月底再说，没有最终确定。",
+    "relevant_evidence": [
+      "[2024-12-07 16:05] 小王: 那要不要去深圳逛一天",
+      "[2024-12-07 16:13] 我: 先别定，我还不知道元旦有没有课程作业",
+      "[2024-12-07 16:14] 小王: 行，月底再说",
+      "[2024-12-07 16:16] 我: 好"
+    ],
+    "category": "conversational",
+    "answerable": true
+  },
+  {
+    "id": "q031",
+    "question": "我对 Neon 的使用状态后来是怎么变化的？",
+    "expected_answer": "2025年时我考虑并尝试把 Render 和 Neon 接起来；到2026年确认只测试过连接，没有用于正式项目，并表示以后有合适的小项目再试。",
+    "relevant_evidence": [
+      "[2025-07-21 15:14] 我: 那我这个项目可能 Neon 就够了",
+      "[2025-07-21 15:17] 我: 好，我今晚把 Render 和 Neon 接起来试试",
+      "[2026-02-26 18:39] 同学A: Neon 后来用了没？",
+      "[2026-02-26 18:40] 我: 之前测试过连接，但没专门拿它做正式项目",
+      "[2026-02-26 18:46] 我: 那以后有合适的小项目我再试"
+    ],
+    "category": "cross_message",
+    "answerable": true
+  },
+  {
+    "id": "q032",
+    "question": "为什么室友后来觉得 Tailscale 还是更适合我？",
+    "expected_answer": "因为 WireGuard 虽然更可控，但配置比 Tailscale 麻烦，而我不想折腾，所以室友认为 Tailscale 更适合我。",
+    "relevant_evidence": [
+      "[2026-04-06 21:34] 室友: 我最近把家里 NAS 换成 WireGuard 了",
+      "[2026-04-06 21:36] 室友: 对，可控一点，就是配置比 Tailscale 麻烦",
+      "[2026-04-06 21:38] 我: 我还是懒得折腾",
+      "[2026-04-06 21:39] 室友: 那 Tailscale 确实适合你"
+    ],
+    "category": "semantic_recall",
+    "answerable": true
+  },
+  {
+    "id": "q033",
+    "question": "学长最早什么时候开始提醒我要给项目保留延迟、成功率这类指标？",
+    "expected_answer": "2025年10月19日。",
+    "relevant_evidence": [
+      "[2025-10-19 17:55] 学长: 可以，不过平时做项目就要记得留指标",
+      "[2025-10-19 17:57] 我: 比如延迟、成功率这些？",
+      "[2025-10-19 17:58] 学长: 对，不然过几个月你只记得“我做过”",
+      "[2025-10-19 18:03] 我: 好，我以后做功能顺手记一下实验结果"
+    ],
+    "category": "time_recall",
+    "answerable": true
+  },
+  {
+    "id": "q034",
+    "question": "我后来真的去了深圳南头古城吗？",
+    "expected_answer": null,
+    "relevant_evidence": [],
+    "category": "unanswerable",
+    "answerable": false
   }
 ]
