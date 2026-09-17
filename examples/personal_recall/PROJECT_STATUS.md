@@ -25,6 +25,7 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | 10    | **Absence-claim validity (R9)**                                | ✅ done — metric built + adjudicated (10 TRUE / 10 FALSE); R9 is *not* window-caused; PASS-graded answers can still be wrong about the record |
 | 11    | **Evidence ablation: the false-memory eval**                   | ⚠️ **criterion FAILED** — 2/34 fabricated under ablation, both **cross-speaker attribution**; grounded 32/34 |
 | 12    | **Speaker-attribution clause (R10 fix)**                       | ✅ done — **A12 adopted**: ablated fabrications 2→**0**, corpus-v2 PASS held at 31/36, latency −2.4 s |
+| 13    | **Attribution screen (R11 guard) + retrieval frontier closed** | ✅ done — pool sweep closes the reach lever; screen flags **exactly** `s020`/`s032` on the defect arm, 0 on every clean arm, at a measured 25%% flag precision |
 | 8     | Persistence (PostgreSQL + pgvector)                            | ⏸                                                                                                                           |
 | 9     | Product UI                                                     | ⏸                                                                                                                           |
 | 10    | Multimodal recall                                              | ⏸                                                                                                                           |
@@ -207,6 +208,8 @@ axis only after Phase 1/6 work; do not over-claim it from Phase 0.5.
   is about. A future prompt or model change could reintroduce cross-speaker attribution with every
   existing metric still green — exactly how R9 and R10 stayed invisible until they were instrumented.
   Guard to build: an attribution check analogous to `absence_claims.py`.
+  **Resolved in Phase 13** — `attribution_screen.py` now monitors it (2/2 recall on the only known
+  defects, zero false alarms on every clean arm, 25 % flag precision requiring adjudication).
 
 ---
 
@@ -1649,3 +1652,109 @@ R9 (absence over-claims) and R10 (cross-speaker attribution) were both invisible
 project had before they were instrumented. The natural next instrument is an **attribution check** —
 verifying that each cited line's speaker actually matches who the answer says the fact is about —
 plus wiring the existing groundedness signals into the product surface so a user can see them.
+
+---
+
+# Phase 13 — the attribution screen (R11 guard): 2/2 recall on the only known defects, at a measured precision that requires adjudication
+
+## First, the retrieval lever was closed properly
+
+Phase 9 measured `k` but always with `hybrid-pool 30`, where the fused list is **capped at 2×pool = 60
+candidates** — so "k=50" was never really 50 candidates wide. Widening the pool settles it:
+
+| hybrid-pool | 30 | 60 | 100 | 200 |
+| ----------- | -- | -- | --- | --- |
+| coverage @k=20 | 87.0 % | 85.5 % | 87.0 % | 87.7 % |
+
+Flat and non-monotone at the adopted k=20: the ceiling is a genuine **ranking** limit, not a pool
+artefact. (At k=50 the pool does matter — 93.1 % → 94.1 % → 96.3 % — but that is 50 chunks in context
+to recover ~3 points and at most 2 of the 5 remaining failures.) Combined with Phase M3's rejected
+selectors, the retrieval space is now fully characterised: **k (10/20/50) × pool (30/60/100/200) ×
+reranker × decomposition × metadata filtering** all measured, one small win (k=20, already adopted)
+and a large documented negative space.
+
+## What was built
+
+`attribution_screen.py` + 11 tests. The signal is mechanical and rests on a measurable property of
+this corpus: the user is a participant literally named 我, so every line is one of
+
+* speaker is 我 → the user's own statement (**safe**);
+* speaker is someone else and the line addresses 你 → about the user (**safe**);
+* speaker is someone else, the line says 我 and does not address 你 → **that person's own situation**;
+* …and a subclass: **relayed** speech, where the 我 belongs to a third party the speaker is quoting
+  ("我表哥说…", "我们组那个同学说…").
+
+The middle class is **30.9 %** of third-party lines in corpus v2 — common enough to matter, separable
+enough to detect. For each cited sentence the screen finds the cited chunk's best-matching line by
+character-bigram overlap and flags the sentence when that line is someone else's own situation and the
+sentence does not attribute it.
+
+## It catches the only defects that exist — after two bugs
+
+**Recall is 2/2**: on the one arm that provably contains fabrications (ablated A11), the screen flags
+`s020` and `s032` and nothing else. Both bugs that hid this were found by measurement, not inspection:
+
+1. **The citation was being orphaned.** Answers write `…。[来源 5]`, so splitting on `。` put the
+   citation in a fragment of its own, which matched nothing — and `s020` was missed entirely. This is
+   the same class of harness bug as Phase M3's `rrf_ranking` weights tuple: silent, and it would have
+   produced a confident "the screen doesn't catch it" conclusion.
+2. **Pronoun attribution was flagged.** Answers attribute as often with 他/她 ("他的系统还没部署") as
+   with a name; `s031` was flagged in four different arms because of it. Fixed with a one-sentence
+   context window.
+
+## Flags across every arm — and a measured precision, not an assumed one
+
+| arm | flagged queries |
+| --- | --------------- |
+| v1 A10 (k=10) | — |
+| v2 A10 (k=10) | `s026` |
+| v2 A11 (k=20) | `s026` |
+| **v2 A12** (adopted) | — |
+| **ablated A11** (the 2 known defects) | **`s020`, `s032`** |
+| **ablated A12** (adopted) | — |
+
+All 4 flags were adjudicated blind, and the result is deliberately unflattering: **1 TRUE_POSITIVE
+(`s032` — the real defect) / 3 FALSE_POSITIVE → 25 % flag precision** (50 % at query level). The
+adjudicator also identified *why* the false ones fire: their matched lines are **nested reported
+speech** ("我表哥…", "我们组那个同学…"), which is neither the user's statement nor cleanly the
+speaker's own situation.
+
+Making that a first-class class (`relayed`) yields two honest operating points:
+
+| | recall on known defects | precision (flag / query) | false alarms on the 4 clean arms |
+| - | --- | --- | --- |
+| **A — include relayed (default)** | **2/2** | 25 % / 50 % | 0 |
+| B — exclude relayed | 1/2 (misses `s020`) | 100 % / 100 % | 0 |
+
+The default is **A**: a guard that stays silent is worse than one that is noisy, because the whole
+point is to hear about a regression. Note the reassuring property both share — **zero false alarms on
+every arm that has no known defect**, including both adopted A12 arms.
+
+## Decision: keep it as a **regression alarm**, explicitly not a verdict
+
+It is not accurate enough to gate anything on a single flag, and it is not claimed to be. What it does
+is turn R11 from "attribution is unenforced" into "attribution is *monitored*": if a future prompt or
+model change reintroduces cross-speaker attribution, the arm that had 2 defects still lights up 2
+queries while every clean arm stays dark.
+
+## Honest caveats
+
+* **The precision sample is tiny (4 flags).** 25 % is a measurement on this sample, not a stable
+  estimate; the sample cannot shrink further because the screen only fires on 4 sentences across six
+  36-query arms.
+* The screen is **lexical**. It matches claims to lines by character-bigram overlap and never
+  understands a sentence; `best_match` can therefore point at the wrong line, and its `s020` hit is at
+  the right *query* via a sentence the adjudicator judged legitimate — i.e. correct at query level for
+  partly the wrong reason.
+* The `relayed` class is a regex over a handful of patterns, not an analysis of reported speech.
+* Recall is only known against **two** defects. A screen validated on two examples is a screen, not a
+  proof.
+
+## Next step
+
+The groundedness surface now has three instruments (`citation_metrics`, `absence_claims`,
+`attribution_screen`) and two measured, fixed-or-monitored risks (R9, R10). None of them is visible to
+a user: `recall.py` prints evidence cards but not whether an answer over-claims absence or borrows
+someone else's situation. Wiring these signals into the product surface — so a recalled answer carries
+its own groundedness caveats — is the natural next phase and is directly aligned with the project's
+"no evidence, no memory claim" promise.

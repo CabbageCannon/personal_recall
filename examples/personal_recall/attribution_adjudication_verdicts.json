@@ -1,0 +1,22 @@
+[
+  {
+    "item": "F1",
+    "verdict": "FALSE_POSITIVE",
+    "reason": "The sentence only sorts the three items into categories and says Cloudflare Tunnel is not in that class, borrowing no personal situation from the roommate's line — and the query itself asks about what the roommate said (his Cloudflare Tunnel)."
+  },
+  {
+    "item": "F2",
+    "verdict": "FALSE_POSITIVE",
+    "reason": "The sentence is a general product-category statement (Vercel/Cloudflare Pages = web hosting; Cloudflare Tunnel = remote access) that asserts nothing about the roommate's or his cousin's own setup as the user's, on a question that itself asks about the roommate's Cloudflare Tunnel."
+  },
+  {
+    "item": "F3",
+    "verdict": "FALSE_POSITIVE",
+    "reason": "Nothing of the cited classmate's own situation is claimed as the user's: the Neon free-tier detail is explicitly attached to the passage (\"同段提到\") rather than to the user, and the user-facing clause (only registered and briefly tried a recommended service, then dropped it) is the user's own recorded action, which the gold answer likewise attributes to the user rather than to 张三's classmate."
+  },
+  {
+    "item": "F4",
+    "verdict": "TRUE_POSITIVE",
+    "reason": "The sentence restates 同学A's first-person account (\"那个存储的方案我看了两遍，最后还是没换\") as an unnamed record fact, and the answer then builds the user's conclusion on it (\"因此本地跑虚拟机用的存储与之前相同\"), so another person's own situation is presented as the user's."
+  }
+]

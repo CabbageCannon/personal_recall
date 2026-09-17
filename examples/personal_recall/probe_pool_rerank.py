@@ -95,7 +95,7 @@ def main() -> int:
     ap.add_argument("--k", type=int, default=10, help="slots shown to the model (A10: 10)")
     ap.add_argument("--hybrid-pool", type=int, default=30, help="candidates per retriever")
     ap.add_argument("--pool", type=int, default=50, help="fused candidates fed to the reranker")
-    ap.add_argument("--rerank-model", required=True)
+    ap.add_argument("--rerank-model", default=None, help="optional; omit to measure hybrid RRF alone")
     ap.add_argument("--max-session-chars", type=int, default=900)
     ap.add_argument("--verify-results", type=Path, help="recorded run to validate the reproduction")
     ap.add_argument("--json-out", type=Path)

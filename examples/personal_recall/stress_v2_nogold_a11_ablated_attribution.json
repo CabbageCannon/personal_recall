@@ -1,0 +1,243 @@
+{
+  "results": "stress_v2_nogold_a11_ablated_results.json",
+  "queries": 36,
+  "queries_with_flags": [
+    "s020",
+    "s032"
+  ],
+  "total_flags": 2,
+  "per_query": [
+    {
+      "query_id": "s001",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s002",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s003",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s004",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s005",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s006",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s007",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s008",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s009",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s010",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s011",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s012",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s013",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s014",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s015",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s016",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s017",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s018",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s019",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s020",
+      "n_flagged": 1,
+      "flagged": [
+        {
+          "sentence": "- **2025-03-21**：别人推荐的服务你只注册试了试，没有继续用；同段提到 **Neon** 免费层会休眠、冷启动要等。 [来源 9]",
+          "citation": 9,
+          "matched_line_speaker": "张三",
+          "matched_line": "我们组那个同学说他试过 Neon，免费层会休眠，冷启动也要等",
+          "match_score": 0.289
+        }
+      ],
+      "risk": true
+    },
+    {
+      "query_id": "s021",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s022",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s023",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s024",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s025",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s026",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s027",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s028",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s029",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s030",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s031",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s032",
+      "n_flagged": 1,
+      "flagged": [
+        {
+          "sentence": "2026-06-10 的记录里提到，那个存储方案看了两遍，最后还是没换；现有存储够用就没动 [来源 12]。",
+          "citation": 12,
+          "matched_line_speaker": "同学A",
+          "matched_line": "那个存储的方案我看了两遍，最后还是没换",
+          "match_score": 0.351
+        }
+      ],
+      "risk": true
+    },
+    {
+      "query_id": "s033",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s034",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s035",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    },
+    {
+      "query_id": "s036",
+      "n_flagged": 0,
+      "flagged": [],
+      "risk": false
+    }
+  ]
+}
