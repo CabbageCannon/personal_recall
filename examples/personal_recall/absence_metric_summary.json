@@ -1,0 +1,48 @@
+{
+  "per_arm": {
+    "v1_A10": {
+      "candidates": 5,
+      "claims": 5,
+      "true": 3,
+      "false": 2,
+      "false_items": [
+        "s032",
+        "s023"
+      ]
+    },
+    "v2_A10": {
+      "candidates": 8,
+      "claims": 10,
+      "true": 5,
+      "false": 5,
+      "false_items": [
+        "s021",
+        "s023",
+        "s025",
+        "s032"
+      ]
+    },
+    "v2_A11": {
+      "candidates": 5,
+      "claims": 5,
+      "true": 2,
+      "false": 3,
+      "false_items": [
+        "s032",
+        "s021",
+        "s030"
+      ]
+    }
+  },
+  "false_by_query": {
+    "s032": 3,
+    "s023": 2,
+    "s021": 2,
+    "s025": 1,
+    "s030": 1
+  },
+  "total": {
+    "FALSE": 10,
+    "TRUE": 10
+  }
+}

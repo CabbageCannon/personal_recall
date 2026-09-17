@@ -1,0 +1,412 @@
+{
+  "results": "stress_v2_a10_results.json",
+  "queries": 36,
+  "answers_with_absence_claim": 12,
+  "total_claims": 16,
+  "risk_candidates": [
+    "s016",
+    "s020",
+    "s021",
+    "s023",
+    "s025",
+    "s029",
+    "s030",
+    "s032"
+  ],
+  "per_query": [
+    {
+      "query_id": "s001",
+      "category": "exact_fact",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 1.0,
+      "missing_gold_lines": [],
+      "risk": false
+    },
+    {
+      "query_id": "s002",
+      "category": "exact_fact",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 1.0,
+      "missing_gold_lines": [],
+      "risk": false
+    },
+    {
+      "query_id": "s003",
+      "category": "cross_message",
+      "n_claims": 1,
+      "claims": [
+        "提供的记录中没有后续最终结果。"
+      ],
+      "evidence_coverage": 1.0,
+      "missing_gold_lines": [],
+      "risk": false
+    },
+    {
+      "query_id": "s004",
+      "category": "exact_keyword",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 1.0,
+      "missing_gold_lines": [],
+      "risk": false
+    },
+    {
+      "query_id": "s005",
+      "category": "exact_keyword",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 1.0,
+      "missing_gold_lines": [],
+      "risk": false
+    },
+    {
+      "query_id": "s006",
+      "category": "semantic_recall",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 1.0,
+      "missing_gold_lines": [],
+      "risk": false
+    },
+    {
+      "query_id": "s007",
+      "category": "semantic_recall",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 1.0,
+      "missing_gold_lines": [],
+      "risk": false
+    },
+    {
+      "query_id": "s008",
+      "category": "semantic_recall",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 1.0,
+      "missing_gold_lines": [],
+      "risk": false
+    },
+    {
+      "query_id": "s009",
+      "category": "person_recall",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 1.0,
+      "missing_gold_lines": [],
+      "risk": false
+    },
+    {
+      "query_id": "s010",
+      "category": "person_recall",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 1.0,
+      "missing_gold_lines": [],
+      "risk": false
+    },
+    {
+      "query_id": "s011",
+      "category": "time_recall",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 1.0,
+      "missing_gold_lines": [],
+      "risk": false
+    },
+    {
+      "query_id": "s012",
+      "category": "time_recall",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 1.0,
+      "missing_gold_lines": [],
+      "risk": false
+    },
+    {
+      "query_id": "s013",
+      "category": "temporal_state_change",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 0.75,
+      "missing_gold_lines": [
+        "[2025-10-11 21:02] 我: Brave Search 的中文结果不太行，先放一边"
+      ],
+      "risk": false
+    },
+    {
+      "query_id": "s014",
+      "category": "temporal_state_change",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 1.0,
+      "missing_gold_lines": [],
+      "risk": false
+    },
+    {
+      "query_id": "s015",
+      "category": "temporal_state_change",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 1.0,
+      "missing_gold_lines": [],
+      "risk": false
+    },
+    {
+      "query_id": "s016",
+      "category": "temporal_state_change",
+      "n_claims": 2,
+      "claims": [
+        "这是约练和提醒，记录未说是否实际去成。",
+        "2026-02-14之后，提供的记录没有小汪健身的新情况；2026-08-28只提到工作 [来源 5]。"
+      ],
+      "evidence_coverage": 0.75,
+      "missing_gold_lines": [
+        "[2024-06-15 20:51] 小汪: 行，我最近天天泡健身房，等你考完喊你一起去"
+      ],
+      "risk": true
+    },
+    {
+      "query_id": "s017",
+      "category": "plan_vs_actual",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 1.0,
+      "missing_gold_lines": [],
+      "risk": false
+    },
+    {
+      "query_id": "s018",
+      "category": "plan_vs_actual",
+      "n_claims": 2,
+      "claims": [
+        "之后只说到“剩下的就看运气”，没有记录最终是否候补成功或如何出票 [来源 2]。",
+        "2025-10-06 你已说“重庆回来了”，说明行程成行，但票最终怎么解决，上下文没有明说 [来源 1]。"
+      ],
+      "evidence_coverage": 1.0,
+      "missing_gold_lines": [],
+      "risk": false
+    },
+    {
+      "query_id": "s019",
+      "category": "plan_vs_actual",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 0.75,
+      "missing_gold_lines": [
+        "[2026-04-20 22:35] 我: 这周投几家试试，先投不那么想去的练练手"
+      ],
+      "risk": false
+    },
+    {
+      "query_id": "s020",
+      "category": "latest_state",
+      "n_claims": 1,
+      "claims": [
+        "若只按记录里出现名字的正式库来算，最早可追溯到 **Supabase** [来源 4]；但更早那个旧库的具体名字，记录没有写出来 [来源 0][来源 6]。"
+      ],
+      "evidence_coverage": 0.25,
+      "missing_gold_lines": [
+        "[2024-03-16 20:13] 小王: 可以试试 Supabase",
+        "[2025-06-08 19:52] 我: Supabase 免费额度不太够，我准备把正式项目迁到 Railway 上的 PostgreSQL",
+        "[2025-06-21 21:14] 我: Railway 的 PostgreSQL 已经建好了，项目跑起来了"
+      ],
+      "risk": true
+    },
+    {
+      "query_id": "s021",
+      "category": "latest_state",
+      "n_claims": 1,
+      "claims": [
+        "给定记录没有四月当时的直接对话原话。"
+      ],
+      "evidence_coverage": 0.5,
+      "missing_gold_lines": [
+        "[2026-04-06 21:36] 室友: 你要不要也搞一个，比之前那个稳，在外面手机也能连",
+        "[2026-04-06 21:38] 我: 我还是懒得折腾"
+      ],
+      "risk": true
+    },
+    {
+      "query_id": "s022",
+      "category": "latest_state",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 1.0,
+      "missing_gold_lines": [],
+      "risk": false
+    },
+    {
+      "query_id": "s023",
+      "category": "earliest_state",
+      "n_claims": 1,
+      "claims": [
+        "因此，上下文只明确了同学A推荐的 Neon 在 2024-08-04 被连接测试过 [来源 9]；没有记录能说明小王推荐的是哪个库，所以不能比较“哪个先用起来”或“中间隔了多久”。"
+      ],
+      "evidence_coverage": 0.25,
+      "missing_gold_lines": [
+        "[2024-03-16 20:13] 小王: 可以试试 Supabase",
+        "[2024-03-16 20:21] 我: 那我今晚注册一个，先建两张表试试",
+        "[2024-07-21 15:10] 同学A: 那你看看 Neon，也是 PostgreSQL"
+      ],
+      "risk": true
+    },
+    {
+      "query_id": "s024",
+      "category": "earliest_state",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 0.25,
+      "missing_gold_lines": [
+        "[2024-03-16 20:12] 我: 还没，后端我放 Render 了，但数据库还在看",
+        "[2024-11-25 20:19] 我: Render 上那个地址还在，能打开，就是界面比较糙",
+        "[2025-07-21 15:07] 我: 后端还是 Render，前端我准备改 Cloudflare Pages"
+      ],
+      "risk": false
+    },
+    {
+      "query_id": "s025",
+      "category": "entity_disambiguation",
+      "n_claims": 2,
+      "claims": [
+        "- 张三相关记录中没有提到“王哥” [来源 2][来源 8]。",
+        "- 记录中虽有小王出现，但没有任何内容说明小王就是“张三说的那个王哥”，也没有把他与小汪关联 [来源 4][来源 9]。"
+      ],
+      "evidence_coverage": 0.25,
+      "missing_gold_lines": [
+        "[2025-01-14 23:20] 张三: 王哥前两天不是还说要去深圳吗",
+        "[2025-01-14 23:21] 我: 嗯，小王提过，后来不是没定嘛",
+        "[2024-03-16 20:13] 小王: 可以试试 Supabase"
+      ],
+      "risk": true
+    },
+    {
+      "query_id": "s026",
+      "category": "entity_disambiguation",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 0.75,
+      "missing_gold_lines": [
+        "[2024-09-08 16:20] 我: 前端我先试了 Vercel，国内访问不太稳，算了"
+      ],
+      "risk": false
+    },
+    {
+      "query_id": "s027",
+      "category": "entity_disambiguation",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 0.75,
+      "missing_gold_lines": [
+        "[2024-07-21 15:10] 同学A: 那你看看 Neon，也是 PostgreSQL"
+      ],
+      "risk": false
+    },
+    {
+      "query_id": "s028",
+      "category": "negative_evidence",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 1.0,
+      "missing_gold_lines": [],
+      "risk": false
+    },
+    {
+      "query_id": "s029",
+      "category": "negative_evidence",
+      "n_claims": 1,
+      "claims": [
+        "结论：没有试成，也没有换成，仍用最早装的远程访问方案；记录里没有我试通 WireGuard 后的结果 [来源 0][来源 1]。"
+      ],
+      "evidence_coverage": 0.75,
+      "missing_gold_lines": [
+        "[2026-06-11 22:47] 我: WireGuard 我配了一晚上没配通，还是回去用 Tailscale 了"
+      ],
+      "risk": true
+    },
+    {
+      "query_id": "s030",
+      "category": "multi_evidence",
+      "n_claims": 1,
+      "claims": [
+        "- **2024-12-31：记录没有说明后端当天的状态或是否迁移/更换**；此前可确认的是 2024-11-25 的 Render 状态 [来源 2][来源 6]。"
+      ],
+      "evidence_coverage": 0.25,
+      "missing_gold_lines": [
+        "[2024-08-06 20:40] 我: 我把 Supabase 那边的连接串都挪到环境变量里了，本地和线上分开",
+        "[2024-10-20 15:10] 我: 结题答辩搞完了，老师没怎么为难我们",
+        "[2024-11-19 22:41] 我: Neon 免费层会休眠，冷启动要等好几秒，先不用了"
+      ],
+      "risk": true
+    },
+    {
+      "query_id": "s031",
+      "category": "multi_evidence",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 0.75,
+      "missing_gold_lines": [
+        "[2025-12-27 22:17] 小汪: 功能跑通了，论文一个字没写"
+      ],
+      "risk": false
+    },
+    {
+      "query_id": "s032",
+      "category": "implicit_reference",
+      "n_claims": 1,
+      "claims": [
+        "- 关于“现在在本地跑东西用的那个存储”：记录中没有明确说明它具体是什么，也没有说它是否仍是 SQLite。"
+      ],
+      "evidence_coverage": 0.3333333333333333,
+      "missing_gold_lines": [
+        "[2026-05-02 10:26] 我: 对，只有本地写着玩的时候用过轻量的那个",
+        "[2026-08-10 21:23] 我: 本地用文件型的那个，随时能删，线上还是托管的那套"
+      ],
+      "risk": true
+    },
+    {
+      "query_id": "s033",
+      "category": "implicit_reference",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 1.0,
+      "missing_gold_lines": [],
+      "risk": false
+    },
+    {
+      "query_id": "s034",
+      "category": "cross_time",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 0.75,
+      "missing_gold_lines": [
+        "[2025-06-21 21:14] 我: Railway 的 PostgreSQL 已经建好了，项目跑起来了"
+      ],
+      "risk": false
+    },
+    {
+      "query_id": "s035",
+      "category": "unanswerable",
+      "n_claims": 2,
+      "claims": [
+        "提供的对话记录中没有出现导师最后定下的**具体毕设题目名称**。",
+        "因此，无法从提供的上下文确定导师最后定的毕设题目叫什么名字。"
+      ],
+      "evidence_coverage": null,
+      "missing_gold_lines": [],
+      "risk": false
+    },
+    {
+      "query_id": "s036",
+      "category": "unanswerable",
+      "n_claims": 1,
+      "claims": [
+        "因此，上下文里没有那家店的名字。"
+      ],
+      "evidence_coverage": null,
+      "missing_gold_lines": [],
+      "risk": false
+    }
+  ]
+}

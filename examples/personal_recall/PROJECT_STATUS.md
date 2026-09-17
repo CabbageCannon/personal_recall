@@ -22,6 +22,7 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | M2    | **Corpus v2: distractor pack for measurement headroom**        | ✅ done — v1 saturated (Hit@10 100%%); v2 costs −6.62 coverage pts at 2.3× the space, still 0 retrieval misses, 0 false memories |
 | M3    | **Selector sweep on v2 (re-rank / decomposition / metadata)**  | ✅ done — all three rejected or neutral; loss is ranking-limited; only measured lever left is budget (k=20 → +7.3 coverage pts) |
 | 9     | **Budget as the lever: A11 = A10 with k=20**                   | ✅ done — **A11 adopted as product reference**: PASS 28→31 on v2, 0 unsupported, 0 citation-grounding failures, +3.6%% latency |
+| 10    | **Absence-claim validity (R9)**                                | ✅ done — metric built + adjudicated (10 TRUE / 10 FALSE); R9 is *not* window-caused; PASS-graded answers can still be wrong about the record |
 | 8     | Persistence (PostgreSQL + pgvector)                            | ⏸                                                                                                                           |
 | 9     | Product UI                                                     | ⏸                                                                                                                           |
 | 10    | Multimodal recall                                              | ⏸                                                                                                                           |
@@ -185,11 +186,13 @@ axis only after Phase 1/6 work; do not over-claim it from Phase 0.5.
   original authoring intent — noted so it is not mistaken for a query error again.
 - **R8 (new)** The 2026-08-20 recap episode makes four final states reachable in ~2 chunks; it is
   load-bearing for `latest_state` answerability, so removing it would create false unanswerables.
-- **R9 (new, Phase 9)** Widening the retrieval window introduces **absence over-claims**: answers that
-  assert the record is *silent* about something the corpus does contain, when the decisive line fell
-  outside the window (`s021`, `s030` on A11). This is a groundedness defect that `unsupported_claim`,
-  `citation_rate` and citation validity all fail to catch — the claim is about the *record*, not about
-  the user's life, so no citation can contradict it. Tracking: an absence-claim validity metric.
+- **R9 (new, Phase 9; corrected in Phase 10)** Answers assert the record is *silent* about things the
+  corpus contains (**absence over-claims**). Originally filed as a side-effect of widening the retrieval
+  window; **Phase 10 measured that it is not** — it occurs at k=10 on both corpora, and `s032` is falsely
+  declared unknown in all three graded arms. It is a generation-side defect that `unsupported_claim`,
+  `citation_rate` and citation validity all fail to catch (the claim is about the *record*, not about the
+  user's life, so no citation can contradict it), and it has been observed in an answer that was graded
+  **PASS**. Instrumented by `absence_claims.py`; screened, blind-adjudicated, and tracked per arm.
 
 ---
 
@@ -1313,3 +1316,92 @@ being confidently wrong. Next phase: define an **absence-claim validity** metric
 "the record does not contain X" is valid only if X is confirmed absent from the retrieved evidence),
 measure it on A10/A11, and only then consider a prompt clause — with the same rule as always: a clause
 that buys PASS by weakening groundedness is rejected.
+
+---
+
+# Phase 10 — absence-claim validity (R9): the defect PASS labels miss, and it is **not** caused by the wider window
+
+## What was built
+
+`absence_claims.py` — an offline screen for answers that assert the **record's silence**, plus
+`tests/test_absence_claims.py` (12 tests). The detector is deliberately narrow: its positive and
+negative cases are *real sentences taken from the graded arms*, so the tests fail if the patterns drift
+from the language the models actually produce. It must fire on「记录里没有四月当时的直接对话」and must
+**not** fire on ordinary negation about the world —「你当时没有答应」「没有试成」are claims about events,
+not about the record.
+
+Two detector gaps were found by those tests and fixed, both real:
+
+* the **most important** shape —「记录中没有 2024 年 10 月的直接对话」(the actual `s030` defect) — was
+  missed, because the first version required a mention-verb after the absence marker. Absence followed by
+  a bare noun phrase is the common case, and it is the one the metric exists for;
+*「没有记录最终是否候补成功」(the `没有记录 X` noun usage) was missed by a pattern that only accepted
+  `没有记录 + 显示/说明/…`.
+
+Neither gap would have been visible from the aggregate counts alone.
+
+## The screen is a filter, not a verdict — and its precision is measured
+
+Deciding whether an absence claim is *true* requires knowing what the claim is about, which no regex can
+do. So the module reports every claim plus a **risk screen**: queries where the answer asserts absence
+*and* the retrieval missed gold that does exist in the corpus — exactly the condition under which a false
+absence becomes possible. Those candidates were then **adjudicated blind** (arm labels hidden, 18 items
+relabelled A–R): for each claim, is the record genuinely silent (TRUE, honest scoping) or does the corpus
+contain it (FALSE, confidently wrong)?
+
+| arm | risk candidates | claims | TRUE | FALSE | screen precision | queries with a false absence |
+| --- | --------------- | ------ | ---- | ----- | ---------------- | ---------------------------- |
+| v1 A10 (k=10) | 5 | 5 | 3 | **2** | 40 % | `s032`, `s023` |
+| v2 A10 (k=10) | 8 | 10 | 5 | **5** | 50 % | `s021`, `s023`, `s025`, `s032` |
+| v2 A11 (k=20) | 5 | 5 | 2 | **3** | 60 % | `s032`, `s021`, `s030` |
+
+Overall: 20 claims, **10 TRUE / 10 FALSE**. Honest scoping is *common* (11–12 of 36 answers make an
+absence claim) and usually correct, which is why the screen needs adjudication rather than a count.
+
+## Two findings that change the picture
+
+**1. R9 is NOT a side-effect of the wider window — Phase 9's hypothesis is refuted.** I predicted that
+k=20 introduced absence over-claiming. It did not: **v1 A10 has 2 false absences at k=10 with saturated
+retrieval** (Hit@10 = 100 %), and `s032` is falsely declared unknown in **all three arms** — different
+corpora, different k. Absence over-claiming is a persistent property of the generation step, not of the
+budget. What widening changed is only *which* queries it lands on (`s030` appears at k=20, `s023`/`s025`
+disappear).
+
+**2. PASS does not imply groundedness, and the label set cannot see this.** `v1 A10 s023` was graded
+**PASS** — correctly, it gives the right order and a right-magnitude gap — and it also asserts that
+"没有记录能说明小王推荐的是哪个库", which the corpus contradicts on a gold line
+(`[2024-03-16 20:13] 小王: 可以试试 Supabase`). So an answer can be *right about the user* and *wrong
+about the record* at the same time, and PASS/PARTIAL/FAIL records none of it. This is the first metric in
+the project that adds information the existing labels do not already contain.
+
+## Honest caveats
+
+* The screen's precision is **40–60 %**: most flagged candidates are correct scoping. It is a
+  triage filter for adjudication, and the FALSE column is the metric — not the candidate count.
+* One of the ten FALSE verdicts (`v1 A10 s023`) is a **strict reading**: the literal sentence ("the record
+  gives no specific date for 暑假") is true, while the conclusion it is used to support ("so the interval
+  cannot be pinned") is false, because `[2024-07-21 15:10]` lets the gold bound it to ~4 months. Nine of
+  ten FALSE verdicts are direct contradictions by a gold line; this one is a false implication.
+* The detector's **recall is bounded by phrasing**. `s036`'s「都未给出店名」is a genuine absence claim with
+  no record noun adjacent, so it is not matched (it happens to be TRUE, so no defect is hidden here, but
+  the screen is not exhaustive).
+* Adjudication is a single grader's judgement, blinded to arm but not replicated.
+
+## Decision: **keep the metric; no prompt change yet**
+
+The metric is cheap, deterministic, offline, and it found a real defect class that survived every previous
+gate — including in an arm graded PASS. It is now part of the standing evaluation for any future arm.
+
+A prompt clause ("do not claim the record is silent unless you checked") is *not* adopted this round: the
+defect is rare (2–5 claims per 36 answers), and this project has already measured that prompt clauses in
+this area cost groundedness elsewhere (A9). Measuring first and changing second is the discipline that
+produced A11; there is no evidence yet that a clause would help more than it costs.
+
+## Next step
+
+`s032` is the clearest target in the repo: it fails in **all three** arms, its answer is a refusal
+("无法判断二者是不是同一个") where the gold says the stores are basically the same, and the deciding lines
+(`[2026-05-02]`, `[2026-08-10]`) sit at dense rank ~50–100. Two directions are now both evidenced:
+raise reach further for the handful of rank-50+ queries, or add a **retrieval-reach diagnostic** that
+tells the user when the answer's own confidence exceeds what the window can support. The next phase
+should pre-register one of them with an explicit criterion, as A11 did.
