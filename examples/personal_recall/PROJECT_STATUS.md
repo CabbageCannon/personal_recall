@@ -28,6 +28,7 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | 13    | **Attribution screen (R11 guard) + retrieval frontier closed** | ✅ done — pool sweep closes the reach lever; screen flags **exactly** `s020`/`s032` on the defect arm, 0 on every clean arm, at a measured 25%% flag precision |
 | 14    | **Groundedness in the product surface**                        | ✅ done — gold-free caveats in `recall.py`; attribution signal is an **alarm** (0–1/arm), silence claims a **reminder** (~30%%/arm); product now ships A12 |
 | 15    | **Real-export ingestion (`chat_import.py` + product guard)**    | ✅ done — 4 layouts converted + **round-trip verified through the engine adapter**; un-ingestible corpora now fail loudly instead of answering from an empty index |
+| 16    | **Product = evaluated system (parity, enforced)**              | ✅ done — `recall.build_session` is the single path; retrieval parity with the A12 arm **36/36**, pinned by 5 structural tests + the committed artifact |
 | 8     | Persistence (PostgreSQL + pgvector)                            | ⏸                                                                                                                           |
 | 9     | Product UI                                                     | ⏸                                                                                                                           |
 | 10    | Multimodal recall                                              | ⏸                                                                                                                           |
@@ -1943,3 +1944,85 @@ real export outside the four supported layouts still needs a conversion rule. Th
 a **second source adapter** (a real, widely-used export layout) driven by an actual sample rather than
 by my assumptions — which requires the user to supply one, and is therefore the right thing to ask for
 at this gate instead of guessing.
+
+---
+
+# Phase 16 — the evaluation describes the product (measured, 36/36), and that is now enforced
+
+## The gap this closes
+
+Fifteen phases evaluated `run_baseline.py`. The thing a user runs is `recall.py` — a **different code
+path**: its own brain construction, prompt registration and corpus handling. If the two diverge, then
+A12's 31/36, the ablation results, and every groundedness metric describe something other than the
+shipped product, and nothing in the repo would have noticed.
+
+## The fix, in two parts
+
+**One construction path.** The product's LLM/retrieval/brain construction lived inline inside
+`main()`, where no test could drive it. It is now `recall.build_session()`, called by both the CLI and
+the parity harness — so the check exercises the product's own code rather than a copy of it.
+
+**An empirical parity check.** `verify_product_parity.py` drives `recall.build_session()` over the 36
+stress queries on corpus v2 and compares the retrieved chunk indices, query by query, against the
+recorded A12 arm. Retrieval runs under `--workflow no-rewrite`, so this is deterministic: **the
+comparison is exact, not statistical.**
+
+| result | count |
+| ------ | ----- |
+| retrieval **identical**, chunk-index-for-chunk-index | **36 / 36** |
+| same set, different order | 0 |
+| **DIVERGED** | **0** |
+
+The evaluation transfers to the product. Everything measured across Phases 0.5–14 — the arm ladder,
+the arm's 31/36, the 2→0 fabrication fix, the groundedness base rates — describes what a user actually
+runs.
+
+## Two informational findings
+
+* **Byte-identical answers: 0/36.** The product does not reproduce the recorded answers textually,
+  which is the project's long-standing measured result (Phase 6: temperature 0 does not make this
+  pipeline reproducible, and only removing the LLM from retrieval does). It is the reason every
+  quality claim in this log is attached to a *configuration* measured once, not to a promise that a
+  re-run yields the same text. Retrieval, by contrast, is bit-reproducible — which is exactly why the
+  parity check is stated in terms of retrieval.
+* **Answers carrying a groundedness caveat: 9/36**, consistent with Phase 14's separately measured
+  base rates (attribution flags 0–1 per arm, silence claims ~11 per arm).
+
+## How it is enforced from now on
+
+`tests/test_product_parity.py` (5 tests) pins the structure that makes the two paths comparable, so
+the divergence cannot be re-introduced silently:
+
+* `main()` must contain **no** `LLMEndpointConfig(` / `RetrievalConfig(` / `HybridConfig(` — all
+  construction must go through `build_session`;
+* `build_session` must still register the prompt, build both configs and ingest the corpus;
+* the defaults must equal the adopted reference (k=20, hybrid pool 30, `no-rewrite`,
+  `cited-attributed`, 900-char sessions), and the CLI must advertise that prompt as its default;
+* the committed `product_parity.json` must show 0 divergences across 36 rows.
+
+## Honest caveats
+
+* Parity is measured on **corpus v2 with the stress queries** — the only corpus with a recorded arm to
+  compare against. A real user export exercises the same retrieval path but a corpus the evaluation
+  never saw; parity there is argued from shared code, not measured.
+* Retrieval parity is necessary but not sufficient for behavioural parity: the same 20 chunks with the
+  same prompt can still yield different text, which is the 0/36 above and is inherent to the model.
+* The structural tests assert *where* code lives, not that it is correct. They would not catch a
+  change that altered both paths identically — which is the point, since such a change is a
+  configuration change that needs re-measuring, not a divergence.
+
+## Decision: the core version is complete and self-consistent
+
+A user can bring their own chat log (`chat_import.py`), ask a question (`recall.py`), and get an answer
+with traceable evidence cards and groundedness caveats — from the same configuration the evaluation
+measured, at 36/36 retrieval parity, with the promise that the numbers in this log describe the tool
+they are holding.
+
+## Next step
+
+The one open item that cannot be advanced without the user is the **second source adapter**: the
+importer's four layouts are motivated by common exporters but no real export has been through it, and
+guessing further formats would be speculation dressed as work. This gate therefore asks for a real
+sample (even the first 20 lines, or just the shape) rather than inventing one. Everything else the log
+lists as ⏸ — persistence (Phase 8), a UI (Phase 9), multimodal (Phase 10) — is additive scope beyond
+the recall core, not a gap in it.

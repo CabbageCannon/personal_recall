@@ -61,6 +61,9 @@ DEFAULT_CORPUS = DATA_DIR / "stress_chats.txt"
 DEFAULT_K = 20
 DEFAULT_HYBRID_POOL = 30
 DEFAULT_MAX_SESSION_CHARS = 900
+#: A12 is the adopted product reference: the A11 prompt plus the speaker-attribution clause that
+#: removed the cross-speaker fabrications (PROJECT_STATUS.md, Phase 12).
+DEFAULT_ANSWER_PROMPT = "cited-attributed"
 
 
 def render_groundedness(report) -> str:
@@ -102,6 +105,47 @@ def build_brain(corpus: Path, llm_config: LLMEndpointConfig) -> Brain:
     )
 
 
+def build_session(
+    corpus: Path,
+    *,
+    k: int = DEFAULT_K,
+    hybrid_pool: int = DEFAULT_HYBRID_POOL,
+    workflow: str = "no-rewrite",
+    answer_prompt: str = DEFAULT_ANSWER_PROMPT,
+    max_output_tokens: int = 8192,
+    temperature: float = 0.0,
+) -> tuple[Brain, RetrievalConfig]:
+    """Register the prompt, build the LLM/retrieval config and ingest the corpus.
+
+    Shared by the CLI and by `verify_product_parity.py`, so the parity check exercises the
+    product's own construction path instead of a copy of it.
+    """
+    from run_baseline import build_workflow_config
+
+    register_answer_prompt(answer_prompt)
+
+    llm_config = LLMEndpointConfig(
+        supplier=DefaultModelSuppliers.OPENAI,
+        model="deepseek-v4-flash",
+        llm_base_url="https://api.deepseek.com",
+        env_variable_name="DEEPSEEK_API_KEY",
+        max_context_tokens=20000,
+        max_output_tokens=max_output_tokens,
+        temperature=temperature,
+    )
+
+    # NOTE (framework ordering quirk): `LLMEndpointConfig` only resolves its API key when a
+    # `RetrievalConfig` is constructed (its __init__ calls `llm_config.set_api_key(force_reset=True)`).
+    # Build the retrieval config BEFORE the brain, or `LLMEndpoint.from_config` gets api_key=None.
+    retrieval_config = RetrievalConfig(
+        llm_config=llm_config,
+        k=k,
+        hybrid_config=HybridConfig(enabled=True, candidate_k=hybrid_pool),
+        workflow_config=build_workflow_config(workflow),
+    )
+    return build_brain(corpus, llm_config), retrieval_config
+
+
 def main() -> int:
     dotenv.load_dotenv(ENV_PATH if ENV_PATH.exists() else None)
 
@@ -119,40 +163,13 @@ def main() -> int:
     parser.add_argument(
         "--answer-prompt",
         choices=("cited-attributed", "cited-narrow", "cited", "timeline", "default"),
-        # A12 is the adopted product reference: the A11 prompt plus the speaker-attribution
-        # clause that removed the cross-speaker fabrications (PROJECT_STATUS.md, Phase 12).
-        default="cited-attributed",
+        default=DEFAULT_ANSWER_PROMPT,
     )
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--max-output-tokens", type=int, default=8192)
     parser.add_argument("--show-uncited", action="store_true", help="also list retrieved sources the answer did not cite")
     parser.add_argument("--json", action="store_true", help="emit machine-readable output")
     args = parser.parse_args()
-
-    register_answer_prompt(args.answer_prompt)
-
-    llm_config = LLMEndpointConfig(
-        supplier=DefaultModelSuppliers.OPENAI,
-        model="deepseek-v4-flash",
-        llm_base_url="https://api.deepseek.com",
-        env_variable_name="DEEPSEEK_API_KEY",
-        max_context_tokens=20000,
-        max_output_tokens=args.max_output_tokens,
-        temperature=args.temperature,
-    )
-
-    from run_baseline import build_workflow_config
-
-
-    # NOTE (framework ordering quirk): `LLMEndpointConfig` only resolves its API key when a
-    # `RetrievalConfig` is constructed (its __init__ calls `llm_config.set_api_key(force_reset=True)`).
-    # Build the retrieval config BEFORE the brain, or `LLMEndpoint.from_config` gets api_key=None.
-    retrieval_config = RetrievalConfig(
-        llm_config=llm_config,
-        k=args.k,
-        hybrid_config=HybridConfig(enabled=True, candidate_k=args.hybrid_pool),
-        workflow_config=build_workflow_config(args.workflow),
-    )
 
     if not args.json:
         print(f"corpus   : {args.corpus}")
@@ -176,7 +193,15 @@ def main() -> int:
             )
             return 2
 
-    brain = build_brain(args.corpus, llm_config)
+    brain, retrieval_config = build_session(
+        args.corpus,
+        k=args.k,
+        hybrid_pool=args.hybrid_pool,
+        workflow=args.workflow,
+        answer_prompt=args.answer_prompt,
+        max_output_tokens=args.max_output_tokens,
+        temperature=args.temperature,
+    )
     response = brain.ask(
         run_id=uuid4(),
         question=args.question,
