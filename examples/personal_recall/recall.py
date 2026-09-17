@@ -1,8 +1,9 @@
 """Personal Recall — ask a question about your chat history and get answers with evidence.
 
 This is the product-facing entry point: it answers with the configuration the project's
-evaluation adopted (A10) and prints the **evidence cards** behind the answer, so every
-claim can be traced back to the original chat lines:
+evaluation adopted (A11 = session chunking, hybrid RRF, no-rewrite, cited-narrow, k=20) and
+prints the **evidence cards** behind the answer, so every claim can be traced back to the
+original chat lines:
 
     python recall.py "我之前说的那个数据库最后到底用了没？"
     python recall.py "小王什么时候推荐我用 Supabase 的？" --json
@@ -51,7 +52,10 @@ EMBEDDING_MODEL_PATH = Path(r"D:\AIModels\bge-small-zh-v1.5")
 ENV_PATH = BASE_DIR.parent.parent / ".env"
 
 DEFAULT_CORPUS = DATA_DIR / "stress_chats.txt"
-DEFAULT_K = 10
+#: A11, the adopted product reference: widening the window from 10 to 20 slots measured
+#: PASS 28 -> 31 on corpus v2 with unsupported claims still 0 and citation-grounding
+#: failures 1 -> 0, for a 3.6 % latency cost. See PROJECT_STATUS.md, Phase 9.
+DEFAULT_K = 20
 DEFAULT_HYBRID_POOL = 30
 DEFAULT_MAX_SESSION_CHARS = 900
 

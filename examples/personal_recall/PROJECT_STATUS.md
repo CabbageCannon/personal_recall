@@ -21,6 +21,7 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | 7     | Grounded generation (EvidenceItem, citation, abstention)       | ✅ done — A10 adopted: 100%% citation rate, 0 misleading, 0 unsupported, PASS 91.7%%                                         |
 | M2    | **Corpus v2: distractor pack for measurement headroom**        | ✅ done — v1 saturated (Hit@10 100%%); v2 costs −6.62 coverage pts at 2.3× the space, still 0 retrieval misses, 0 false memories |
 | M3    | **Selector sweep on v2 (re-rank / decomposition / metadata)**  | ✅ done — all three rejected or neutral; loss is ranking-limited; only measured lever left is budget (k=20 → +7.3 coverage pts) |
+| 9     | **Budget as the lever: A11 = A10 with k=20**                   | ✅ done — **A11 adopted as product reference**: PASS 28→31 on v2, 0 unsupported, 0 citation-grounding failures, +3.6%% latency |
 | 8     | Persistence (PostgreSQL + pgvector)                            | ⏸                                                                                                                           |
 | 9     | Product UI                                                     | ⏸                                                                                                                           |
 | 10    | Multimodal recall                                              | ⏸                                                                                                                           |
@@ -184,6 +185,11 @@ axis only after Phase 1/6 work; do not over-claim it from Phase 0.5.
   original authoring intent — noted so it is not mistaken for a query error again.
 - **R8 (new)** The 2026-08-20 recap episode makes four final states reachable in ~2 chunks; it is
   load-bearing for `latest_state` answerability, so removing it would create false unanswerables.
+- **R9 (new, Phase 9)** Widening the retrieval window introduces **absence over-claims**: answers that
+  assert the record is *silent* about something the corpus does contain, when the decisive line fell
+  outside the window (`s021`, `s030` on A11). This is a groundedness defect that `unsupported_claim`,
+  `citation_rate` and citation validity all fail to catch — the claim is about the *record*, not about
+  the user's life, so no citation can contradict it. Tracking: an absence-claim validity metric.
 
 ---
 
@@ -1209,3 +1215,101 @@ prediction is +7.3 points of evidence coverage; the pre-registered criterion is 
 explicit and real: more slots also means more near-duplicate distractors in context, and this project has
 already measured that a *stronger* prompt can buy PASS at the cost of groundedness (A9). If A11 buys PASS
 by spending groundedness it will be rejected exactly as A9 was.
+
+---
+
+# Phase 9 — budget as the lever: A11 = A10 with k=20 — **ADOPTED as the new product reference**
+
+Phase M3 rejected every candidate-selection mechanism and left exactly one measured lever standing:
+how many slots the model is shown. This phase spends a paid arm on that single variable.
+
+## Pre-registration (recorded before the run)
+
+`--k 10` → `--k 20`, everything else byte-identical (corpus v2, session chunks, hybrid RRF pool 30,
+`--workflow no-rewrite`, `--answer-prompt cited-narrow`, temperature 0, 8192 output tokens).
+Prediction: evidence coverage 79.7 % → 87.0 % (**+7.3 pts**).
+Criterion: PASS improves **and** unsupported claims do not increase **and** citation honesty does not
+regress. Anything else is a rejection.
+
+## Retrieval was verified, not assumed
+
+The arm's 20 retrieved sources reproduce the offline hybrid top-20 **exactly, 36/36 chunk indices**
+(`probe_pool_rerank.py --k 20 --verify-results stress_v2_a11_k20_results.json`). So the paid run is
+provably the retrieval the probe measured — the prediction below is a test of the instrument as well as
+of the mechanism.
+
+## Result (identical configuration, only `k` differs)
+
+| metric | A10 (k=10) | **A11 (k=20)** | |
+| ------ | ---------- | -------------- | - |
+| **PASS** | 28/36 (77.8 %) | **31/36 (86.1 %)** | **+3** |
+| PARTIAL | 8 | 5 | −3 |
+| FAIL | 0 | 0 | = |
+| **unsupported claims** | 0 | **0** | **=** ✓ |
+| citation-grounding failures | 1 (`s025`) | **0** | improved |
+| evidence coverage | 0.7966 | **0.8701** | **+7.35** (predicted +7.3) |
+| retrieval coverage (gold) | 0.7632 | **0.8509** | +8.8 |
+| citation coverage (gold) | 0.7193 | **0.7719** | +5.3 |
+| lexical citation precision | 0.5892 | **0.6040** | +1.5 |
+| citation rate / invalid | 100 % / 0 | 100 % / 0 | = ✓ |
+| abstention accuracy | 100 % | 100 % | = ✓ |
+| mean latency | 19.5 s | 20.2 s | +3.6 % |
+
+**The pre-registered criterion is met on all three clauses**, and the offline prediction (+7.3 pts) landed
+at +7.35 — the probe is now a validated predictor, not a proxy.
+
+Widening the window is **monotone**: 8 queries gained evidence, **0 lost any**, 26 unchanged. Flips are
+3 and all in one direction:
+
+* `s016` PARTIAL → PASS (coverage 0.750 → 1.000) — the 2024-06「天天泡健身房」line entered the window, and
+  the answer now reconstructs the full 2024-06 → 2026-02 arc including that the gym habit did *not* start
+  in 2025.
+* `s023` PARTIAL → PASS (0.250 → 0.750) — the 2024-07-21 Neon recommendation anchor arrived, so the
+  answer orders Supabase-before-Neon instead of declining.
+* `s025` PARTIAL → PASS (0.250 → 0.750) — the 王哥→小王 link arrived; the answer now commits to
+  "不是同一个人" **and** the citation-grounding error that A10 made on this query disappears (1 → 0).
+
+The three recoveries are exactly the three queries whose decisive evidence crossed into the top-20 — the
+mechanism is fully accounted for, with no unexplained gains.
+
+## Honest caveats
+
+* **A new failure mode appeared, and it is not caught by any current metric.** Two answers assert the
+  record is *silent* when it is not: `s021` says「记录里没有四月当时的直接对话」and `s030` says there is no
+  2024-10 record, although gold evidence for both exists in the corpus (just outside the window). These
+  are **retrieval-scope over-claims**, not invented life events, so `unsupported_claim` stays false and
+  the citation metrics see nothing wrong — a confidently wrong claim about absence is invisible to a
+  metric built on citation validity. Recorded as risk **R9** in the risk register; it is the natural
+  failure mode of a wider window.
+* The 5 remaining PARTIALs are unchanged by this phase: `s013` (Brave Search line sits beyond rank 20 —
+  the recall sweep puts it inside k=50), `s021`, `s029`, `s030`, `s032` (whose decisive lines need
+  k≈50–100). Buying those with more slots would mean a 3–5× context for 5 queries.
+* The two halves were graded independently by two graders under the same rubric and merged with
+  validation (36 rows, no duplicates, order checked). Grader-flagged borderline calls, kept as scored for
+  consistency with every earlier arm: `s013`'s "两家" undercount is PARTIAL (not FAIL) because the answer
+  scopes itself with「按记录能确认的是」; `s014`'s 11-months headline is PASS because it also reports the
+  ~10-month figure on the gold's own date basis.
+* A11's 31/36 is on **corpus v2**; A10's headline 33/36 was on the easier **v1**. On the same v2 corpus the
+  comparison is 28 → 31, which is the like-for-like number.
+
+## Decision: **adopt A11 (k=20) as the new product reference**
+
+It dominates A10 on this corpus on every axis that matters: +3 PASS, same zero unsupported claims, zero
+citation-grounding failures instead of one, better citation coverage and precision, identical abstention,
+and a 3.6 % latency cost. Unlike A9 — which also bought PASS but paid with the project's first false
+memory — A11 improves groundedness while it improves recall, so it does not trade away the property this
+project exists for.
+
+A10 remains the reference for the historical v1 arm ladder; A11 becomes the configuration the product
+surface should ship.
+
+## Next step (motivated by the new failure mode)
+
+The remaining 5 PARTIALs are all retrieval-reach, and the cheapest way to reach them is a much larger
+window that the product would not want to pay for. The more valuable next move is therefore **R9**:
+answers that assert the record's silence when the record is not silent. That is a *groundedness* defect
+invisible to every metric in the repo, and it is the one thing a user would experience as the system
+being confidently wrong. Next phase: define an **absence-claim validity** metric (a claim of the form
+"the record does not contain X" is valid only if X is confirmed absent from the retrieved evidence),
+measure it on A10/A11, and only then consider a prompt clause — with the same rule as always: a clause
+that buys PASS by weakening groundedness is rejected.
