@@ -1,4 +1,4 @@
-﻿"""Keep the README honest: every command and flag it documents must actually exist.
+"""Keep the README honest: every command and flag it documents must actually exist.
 
 Documentation drifts silently. A README that tells a new user to run `--some-flag` that was renamed
 two phases ago is worse than no README, because it fails at the first thing they try. These tests
@@ -29,6 +29,7 @@ SAFE_TO_PROBE = {
     "verify_product_parity.py",
     "build_stress_v2.py",
     "validate_stress_dataset.py",
+    "real_eval.py",
 }
 
 

@@ -1,0 +1,37 @@
+{
+  "schema": "personal-recall-eval/v1",
+  "instructions": [
+    "Fill in the `question` field of every entry, then run:",
+    "  python real_eval.py --questions eval_questions.json --corpus shards/ --out real_eval_results.json",
+    "The runner refuses to start while any entry still contains the placeholder marker «.",
+    "Ask about things YOU know the answer to - the value of this eval is that you can judge the answer.",
+    "`note` is free space for what you expect; it is stored with the result and never sent to the model.",
+    "Categories (one per entry, all six should be represented):",
+    "  single_fact_recall       one fact, stated once - 'what did I decide about X'",
+    "  timeline_reasoning       several messages in order - 'how did X change over time'",
+    "  speaker_attribution      who said or did it - 'who recommended X to me', 'what did A say about B'",
+    "  multi_source_synthesis   needs two chunks joined - 'is A the same person as B', 'what changed and why'",
+    "  abstention               the record does NOT contain it - 'what is the name of X'; a good answer declines",
+    "  older_memory             the fact is far back in the history - a real recency test"
+  ],
+  "questions": [
+    {"id": "q01", "category": "single_fact_recall", "question": "«fill in: a fact stated once in your history»", "note": "«what you expect»"},
+    {"id": "q02", "category": "single_fact_recall", "question": "«fill in»", "note": ""},
+    {"id": "q03", "category": "single_fact_recall", "question": "«fill in»", "note": ""},
+    {"id": "q04", "category": "timeline_reasoning", "question": "«fill in: something that changed over weeks or months»", "note": ""},
+    {"id": "q05", "category": "timeline_reasoning", "question": "«fill in»", "note": ""},
+    {"id": "q06", "category": "timeline_reasoning", "question": "«fill in»", "note": ""},
+    {"id": "q07", "category": "speaker_attribution", "question": "«fill in: who said or did something»", "note": ""},
+    {"id": "q08", "category": "speaker_attribution", "question": "«fill in»", "note": ""},
+    {"id": "q09", "category": "speaker_attribution", "question": "«fill in»", "note": ""},
+    {"id": "q10", "category": "multi_source_synthesis", "question": "«fill in: needs two or more messages joined»", "note": ""},
+    {"id": "q11", "category": "multi_source_synthesis", "question": "«fill in»", "note": ""},
+    {"id": "q12", "category": "multi_source_synthesis", "question": "«fill in»", "note": ""},
+    {"id": "q13", "category": "abstention", "question": "«fill in: something your history genuinely does NOT contain»", "note": "a good answer declines instead of inventing"},
+    {"id": "q14", "category": "abstention", "question": "«fill in»", "note": ""},
+    {"id": "q15", "category": "abstention", "question": "«fill in»", "note": ""},
+    {"id": "q16", "category": "older_memory", "question": "«fill in: something from long ago»", "note": ""},
+    {"id": "q17", "category": "older_memory", "question": "«fill in»", "note": ""},
+    {"id": "q18", "category": "older_memory", "question": "«fill in»", "note": ""}
+  ]
+}

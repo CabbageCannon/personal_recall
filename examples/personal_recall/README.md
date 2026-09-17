@@ -129,8 +129,25 @@ Output has three parts:
   sentence by lexical similarity measured ~17 % precision: multi-fact summary sentences legitimately
   cite several chunks, and bigram overlap produced spurious winners.
 
-## 3. Reproduce the measurements
+## 3. Acceptance check on your own history
 
+The stress corpus answers *"how good is the engine under controlled conditions"*. This answers *"does
+it work on my history, on questions I care about"* — 15–20 questions across six categories, with
+everything a human needs to judge each answer recorded beside it.
+
+```bash
+cp eval_questions.template.json eval_questions.json   # then fill in the questions
+python real_eval.py --questions eval_questions.json --corpus shards/ --out real_eval_results.json
+python real_eval.py --questions eval_questions.json --corpus shards/ --report-only
+```
+
+The runner **refuses to start while the template still holds placeholders**, so a half-filled question
+set cannot quietly spend API calls. Each result row carries the answer, every retrieved chunk (time
+range, participants, text), the citations, the groundedness caveats, and the latency — plus four
+`labels` left `null` for you: `answer_correct`, `retrieval_correct`, `citation_binding_correct`,
+`attribution_correct`. Re-running preserves labels already filled in.
+
+## 4. Reproduce the measurements
 Everything in `PROJECT_STATUS.md` is regenerable. Retrieval is deterministic under `--workflow
 no-rewrite`, which is what makes these comparisons exact rather than statistical.
 

@@ -33,6 +33,7 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | 18A   | **WeFlow JSON source adapter (real WeChat, direct)**           | ✅ done — JSON → `MemoryEvent` with no TXT relay; text path proven **byte-identical (720/720)**; real-data leak found and closed |
 | 18B   | WeChat 3.x multi-shard completeness (`MSG*.db`)                 | ✅ done (B1) — event-level merge before sessioning; dedupe on `serverId` only; **PARTIAL-history warning** vs the real `Msg/Multi`; single-file path still 720/720 |
 | 18C   | Citation evidence consistency                                   | ✅ done — quote-anchored binding check (a lexical first version measured **17%% precision and was discarded**); **2 mismatches / 216 answers**, surfaced in the product panel |
+| 18D   | Real-data acceptance harness                                    | ✅ done — `real_eval.py` + template; refuses placeholders, preserves labels, reuses `build_session`; proven end-to-end on all 6 categories; **awaiting your questions** |
 | 8     | Persistence (PostgreSQL + pgvector)                            | ⏸                                                                                                                           |
 | 9     | Product UI                                                     | ⏸                                                                                                                           |
 | 10    | Multimodal recall                                              | ⏸                                                                                                                           |
@@ -2482,3 +2483,81 @@ judge was introduced. The check is mechanical and deterministic.
 **18D — real-WeChat acceptance eval harness**, 15–20 questions across the six categories, recording
 answers, retrieved sources, groundedness and citation-consistency warnings for manual labelling.
 Stopping here for review as instructed.
+
+---
+
+# Phase 18D — real-data acceptance harness
+
+## Files changed
+
+| file | change |
+| ---- | ------ |
+| `real_eval.py` | **new** — the harness |
+| `eval_questions.template.json` | **new** — 18 slots, three per category, with per-category guidance |
+| `README.md` | acceptance-check usage (drift-tested) |
+| `tests/test_real_eval.py` | **new** — 19 tests |
+
+## Design
+
+* **Small by construction**, as the brief asks: 15–20 questions over the six categories
+  (`single_fact_recall`, `timeline_reasoning`, `speaker_attribution`, `multi_source_synthesis`,
+  `abstention`, `older_memory`). No judge system, no scoring model.
+* **Records everything a human needs to judge an answer**, per question: the answer, every retrieved
+  chunk (time range, participants, text, chunk id), the citation indices, the groundedness object
+  including **citation binding mismatches** and attribution flags, and the latency.
+* **Four labels start `null`** for a human to fill in place: `answer_correct`, `retrieval_correct`,
+  `citation_binding_correct`, `attribution_correct`. Re-running **preserves existing labels** —
+  labelling is work and another run must never discard it.
+* **Reuses the product path**: `recall.build_session`, so the harness cannot drift from the shipped
+  configuration. Retrieval defaults were not touched.
+* **Fails before spending anything.** Question-set validation rejects a mistyped category, a duplicate
+  id, a too-short question, and **any entry still holding the template placeholder** — so a half-filled
+  question set cannot quietly burn API calls and produce a results file covering five categories.
+* **Resumable**: results are saved after every question (the lesson from Phase 11's transient
+  `RemoteProtocolError`), and `--report-only` summarises an existing run without loading the model.
+
+## Verification
+
+**End-to-end on a six-question demo set** (one per category) against the synthetic shard corpus:
+
+```
+[05/6] q05 abstention             3 sources    1.7s
+      Q: 我常去的那家店叫什么名字？
+      A: 提供的记录里没有提到你常去的那家店的名字。
+
+category                     n  labelled  caveats   mean ms
+single_fact_recall           1         0        0    2330.7
+timeline_reasoning           1         0        1    6289.1
+speaker_attribution          1         0        0    1986.0
+multi_source_synthesis       1         0        0    1849.3
+abstention                   1         0        1    1658.3
+older_memory                 1         0        0    1626.9
+```
+
+All six categories produced a record with the full field set, the abstention question was correctly
+declined, and the report renders per-category counts, caveat counts, mean latency and the four
+labelling fields. `--report-only` reproduces the table without loading the model stack.
+
+**One bug found by running it**: the harness called `build_session` without loading `.env`, which
+`recall.py` and `verify_product_parity.py` each do for themselves — the first run died with
+`Missing credentials`. Fixed in the harness (the product path was not changed).
+
+**Tests:** 296 pass (was 276; +20). All Python files UTF-8.
+
+## What is still needed from the user
+
+The harness is complete and proven; the **questions are yours**. `eval_questions.template.json` has
+18 slots with guidance per category, and the runner refuses to run until they are filled. Questions
+should be ones you already know the answer to — that is what makes the manual labels meaningful.
+
+## Phase 18A–18D: status
+
+| phase | state |
+| ----- | ----- |
+| 18A WeFlow JSON source adapter | ✅ JSON → `MemoryEvent`, no TXT relay; text path proven byte-identical (720/720); real-data `.gitignore` gap found and closed |
+| 18B multi-shard completeness | ✅ option B1: event-level merge, `serverId`-only dedupe, PARTIAL-history warning against the real `Msg/Multi` |
+| 18C citation evidence consistency | ✅ quote-anchored binding check; a lexical first version measured 17 % precision and was discarded; 2 mismatches / 216 answers |
+| 18D real-data acceptance harness | ✅ complete and proven end-to-end; **awaiting your questions** |
+
+The adopted product path (retrieval, chunking, prompt, k, hybrid pool, workflow) was **not changed** in
+any of the four phases.
