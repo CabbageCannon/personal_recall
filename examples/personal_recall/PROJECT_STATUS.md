@@ -32,7 +32,7 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | 17    | **Entry point (`README.md`) with drift tests**                 | ✅ done — quickstart for import → ask → read; 15 tests keep every documented script and flag true to the code |
 | 18A   | **WeFlow JSON source adapter (real WeChat, direct)**           | ✅ done — JSON → `MemoryEvent` with no TXT relay; text path proven **byte-identical (720/720)**; real-data leak found and closed |
 | 18B   | WeChat 3.x multi-shard completeness (`MSG*.db`)                 | ✅ done (B1) — event-level merge before sessioning; dedupe on `serverId` only; **PARTIAL-history warning** vs the real `Msg/Multi`; single-file path still 720/720 |
-| 18C   | Citation evidence consistency                                   | ⏸ next — offline; mechanical claim-vs-cited-chunk check as a groundedness warning |
+| 18C   | Citation evidence consistency                                   | ✅ done — quote-anchored binding check (a lexical first version measured **17%% precision and was discarded**); **2 mismatches / 216 answers**, surfaced in the product panel |
 | 8     | Persistence (PostgreSQL + pgvector)                            | ⏸                                                                                                                           |
 | 9     | Product UI                                                     | ⏸                                                                                                                           |
 | 10    | Multimodal recall                                              | ⏸                                                                                                                           |
@@ -2382,3 +2382,103 @@ message before trusting recency, and it is the kind of gap this phase exists to 
 mechanical check that a cited sentence is actually supported by the chunk it cites, reported as a
 groundedness warning (no gold, no LLM judge), with the real `拌粉` mis-binding case as a synthetic
 regression fixture. Stopping here for review as instructed.
+
+---
+
+# Phase 18C — citation evidence consistency
+
+## The failure this targets
+
+Reported from the real WeChat smoke test, and invisible to every existing metric:
+
+```
+Answer sentence : 11:26 你说“我又点了拌粉” [来源 1]
+Source 0        : 07:27 – 11:53   (contains: 11:26 我: 我又点了拌粉)
+Source 1        : 11:53 – 12:35   (cannot contain 11:26)
+```
+
+The index was valid, the citation was well-formed, the answer was correct — the **binding** was wrong.
+Re-running the model produced `[来源 0]`, confirming a binding error rather than a retrieval error.
+
+## Files changed
+
+| file | change |
+| ---- | ------ |
+| `citation_consistency.py` | **new** — the checker |
+| `groundedness.py` | surfaces binding mismatches in the product panel |
+| `recall.py` | `render_groundedness` prints the offending quote and sentence |
+| `README.md` | caveat table with measured base rates |
+| `tests/test_citation_consistency.py`, `tests/test_groundedness.py` | **new** / extended — 23 tests |
+
+## A first version that measured badly, and what replaced it
+
+The first implementation scored **every** cited sentence against every source by character-bigram
+containment. Measured across six committed arms (216 answers, ~700 sentences): **6 mismatch findings,
+about 1 of which held up — ~17 % precision.** Two causes were systematic:
+
+* **multi-fact summary sentences** legitimately cite several chunks, so "the best matching single
+  source" is a meaningless comparison for them;
+* bigram overlap produced **spurious winners** — a claim about 搬家 matched the line 「搬什么家」.
+
+That version was discarded rather than shipped. The replacement is anchored on something much harder
+to fake: **a verbatim quote**. When an answer puts text in quotation marks it is making a claim about
+what the record says, and that text must appear in the chunk it cites.
+
+Three further calibration decisions, each measured:
+
+* **Record-silence claims are excluded.** The evidence for "the record does not mention X" is an
+  *absence*, so no quoted text can support it and lexical scoring guarantees a false positive. That
+  class belongs to `absence_claims.py`. Removing it cut the noise substantially.
+* **`MIN_QUOTE_CHARS = 6`.** At 4 characters, a claim quoting the generic phrase 「另一个同学」 was
+  flagged against a source that merely contained that phrase. At 6, both genuine mismatches (14 and 9
+  characters) and the reported case (6) survive. The cost is recorded as a test: the genuine but short
+  quote 「去拿外卖」 is now deliberately ignored.
+* **`unverified` quotes are not surfaced.** They outnumber mismatches 8:1 (16 vs 2) and inspection
+  showed they are dominated by the model putting its **own paraphrase** in quotes — 「两个方向」,
+  「小王推荐」, 「开始使用/试跑」. They stay in the JSON for analysis; only mismatches become warnings.
+
+## Result after calibration
+
+| | fixture (wrong cite) | fixture (right cite) |
+| - | -------------------- | -------------------- |
+| findings | **1 mismatch**, naming Source 0 | **0** |
+
+Across the six committed arms: **2 mismatches in 216 answers** (both inspected and judged genuine —
+`v2 A11 s034` and `v2 A12 s027`), 16 unverified, and at most one flagged query per arm. That is an
+alarm-grade base rate, not a reminder.
+
+What a user now sees (rendered offline from the fixture, no API call):
+
+```
+Groundedness: 1 citation(s) | 1 binding mismatch(es) | no silence claims | no attribution flags
+
+  ! 1 citation binding mismatch(es): quoted text is not in the source it cites, but is in another retrieved source
+
+  citation: quoted text «我又点了拌粉» is not in the cited source (Source [1]) but appears in Source [0]
+    in sentence: 11:26 你说“我又点了拌粉” [来源 1]
+```
+
+## Honest limits
+
+* **Recall on the one independently labelled defect is zero, and by design.** `stress_v2_a10 s025` was
+  graded as citing a 同学A chunk for a claim about 张三's records — that is an *attribution* error on a
+  *silence* claim, which this module now skips because it is a silence claim. It is `attribution_screen`'s
+  territory. This module is not a general citation auditor and is not claimed to be one.
+* **Quotes only.** A sentence with no quoted span is not checked at all, so a paraphrase cannot be
+  caught. That is the price of the precision.
+* **`unverified` is unresolved, not validated.** It was judged noisy by inspection of 16 findings, not
+  adjudicated blind.
+* The mismatch sample is **2 findings**; precision is judged by reading them, not measured.
+
+## Scope discipline
+
+Retrieval, chunking, prompt, k, hybrid pool and workflow defaults were **not** touched, and no new LLM
+judge was introduced. The check is mechanical and deterministic.
+
+**Tests:** 275 pass (was 252; +23). All Python files UTF-8.
+
+## Next phase (not started)
+
+**18D — real-WeChat acceptance eval harness**, 15–20 questions across the six categories, recording
+answers, retrieved sources, groundedness and citation-consistency warnings for manual labelling.
+Stopping here for review as instructed.

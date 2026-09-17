@@ -99,6 +99,10 @@ def render_groundedness(report) -> str:
         lines.append("")
         for warning in warnings:
             lines.append(f"  ! {warning}")
+    for mismatch in report.citation_mismatches:
+        lines.append("")
+        lines.append(f"  citation: {mismatch['explanation']}")
+        lines.append(f"    in sentence: {mismatch['sentence'][:110]}")
     for flag in report.attribution_flags:
         lines.append("")
         lines.append(f"  attribution: {flag['sentence'][:110]}")

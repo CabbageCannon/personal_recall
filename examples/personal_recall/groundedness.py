@@ -32,6 +32,7 @@ from typing import Any, Mapping, Sequence
 
 from absence_claims import detect_absence_claims
 from attribution_screen import screen_answer
+from citation_consistency import check_answer
 from citation_metrics import parse_citations
 
 
@@ -44,10 +45,16 @@ class GroundednessReport:
     invalid_citations: int
     absence_claims: tuple[str, ...]
     attribution_flags: tuple[Mapping[str, Any], ...] = field(default_factory=tuple)
+    citation_mismatches: tuple[Mapping[str, Any], ...] = field(default_factory=tuple)
 
     @property
     def has_caveats(self) -> bool:
-        return bool(self.absence_claims or self.attribution_flags or self.invalid_citations)
+        return bool(
+            self.absence_claims
+            or self.attribution_flags
+            or self.citation_mismatches
+            or self.invalid_citations
+        )
 
     @property
     def uncited(self) -> bool:
@@ -56,6 +63,11 @@ class GroundednessReport:
     def warnings(self) -> list[str]:
         """Human-readable caveats, strongest first."""
         out: list[str] = []
+        if self.citation_mismatches:
+            out.append(
+                f"{len(self.citation_mismatches)} citation binding mismatch(es): quoted text is not "
+                "in the source it cites, but is in another retrieved source"
+            )
         if self.invalid_citations:
             out.append(
                 f"{self.invalid_citations} citation(s) point outside the retrieved sources"
@@ -82,6 +94,11 @@ class GroundednessReport:
         if self.uncited:
             parts.append("uncited")
         parts.append(
+            f"{len(self.citation_mismatches)} binding mismatch(es)"
+            if self.citation_mismatches
+            else "citations bind"
+        )
+        parts.append(
             f"{len(self.absence_claims)} silence claim(s)"
             if self.absence_claims
             else "no silence claims"
@@ -101,6 +118,7 @@ class GroundednessReport:
             "uncited": self.uncited,
             "absence_claims": list(self.absence_claims),
             "attribution_flags": [dict(f) for f in self.attribution_flags],
+            "citation_mismatches": [dict(f) for f in self.citation_mismatches],
             "warnings": self.warnings(),
         }
 
@@ -110,14 +128,16 @@ def assess(answer: str, sources: Sequence[Mapping[str, Any]]) -> GroundednessRep
     answer = answer or ""
     valid, invalid = parse_citations(answer, len(sources))
     claims = detect_absence_claims(answer)
-    flags = screen_answer(
-        answer,
-        [{"rank": s.get("rank"), "content": s.get("content") or ""} for s in sources],
-    )
+    normalized = [
+        {"rank": s.get("rank"), "content": s.get("content") or ""} for s in sources
+    ]
+    flags = screen_answer(answer, normalized)
+    consistency = check_answer(answer, normalized)
     return GroundednessReport(
         n_sources=len(sources),
         citations=tuple(valid),
         invalid_citations=invalid,
         absence_claims=tuple(c.sentence for c in claims),
         attribution_flags=tuple(flags),
+        citation_mismatches=tuple(f.as_dict() for f in consistency.mismatches),
     )

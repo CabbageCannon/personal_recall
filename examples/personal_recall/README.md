@@ -102,17 +102,32 @@ Output has three parts:
 * **Groundedness** — caveats a reader should know:
 
   ```
-  Groundedness: 12 citation(s) | 2 silence claim(s) | 1 attribution flag(s)
+  Groundedness: 12 citation(s) | 1 binding mismatch(es) | 2 silence claim(s) | 1 attribution flag(s)
+    ! 1 citation binding mismatch(es): quoted text is not in the source it cites, but is in
+      another retrieved source
     ! this statement claims the record does NOT contain something - the record may simply not
       have been retrieved
     ! 1 statement rests on another person's own account (同学A) - check the answer is not
       borrowing their situation
+
+  citation: quoted text «我又点了拌粉» is not in the cited source (Source [1]) but appears in Source [0]
+    in sentence: 11:26 你说“我又点了拌粉” [来源 1]
   ```
 
   These are **caveats, not verdicts**: without knowing the intended answer the tool cannot say an
-  answer is wrong, only that a statement is worth checking. The attribution flag is a strong signal
-  (it fires on ~0–1 queries per run); the silence-claim notice is common (~30 % of answers) and is a
-  reminder rather than an alarm.
+  answer is wrong, only that a statement is worth checking. Their measured base rates differ a lot,
+  which is how to read them:
+
+  | caveat | base rate | how to read it |
+  | ------ | --------- | -------------- |
+  | citation binding mismatch | 0–1 per 36 answers | **alarm** — the answer quotes text that is not in the chunk it cites |
+  | attribution flag | 0–1 per 36 answers | **alarm** — a statement rests on someone else's own situation |
+  | silence claim | ~30 % of answers | **reminder** — the record may simply not have been retrieved |
+  | unverified quote | ~2–6 per 36 answers | *not surfaced* — usually the model's own paraphrase in quotes |
+
+  The binding check is anchored on **verbatim quotes only**, because a first version that scored every
+  sentence by lexical similarity measured ~17 % precision: multi-fact summary sentences legitimately
+  cite several chunks, and bigram overlap produced spurious winners.
 
 ## 3. Reproduce the measurements
 

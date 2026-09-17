@@ -84,9 +84,47 @@ def test_as_dict_is_json_serialisable_and_complete() -> None:
         "uncited",
         "absence_claims",
         "attribution_flags",
+        "citation_mismatches",
         "warnings",
     }
     assert payload["n_sources"] == 2
+
+
+def test_a_binding_mismatch_becomes_a_product_warning() -> None:
+    """The Phase 18C signal must reach the panel a user actually sees."""
+    sources = [
+        {"rank": 1, "content": "[2026-09-17 07:27] 我: 早\n[2026-09-17 11:26] 我: 我又点了拌粉"},
+        {"rank": 2, "content": "[2026-09-17 12:34] 我: 去拿外卖"},
+    ]
+    report = assess('11:26 你说“我又点了拌粉” [来源 1]', sources)
+    assert len(report.citation_mismatches) == 1
+    assert any("binding mismatch" in w for w in report.warnings())
+    assert "binding mismatch(es)" in report.summary_line()
+    assert report.citation_mismatches[0]["found_in"] == [0]
+
+
+def test_a_correct_binding_produces_no_warning() -> None:
+    sources = [
+        {"rank": 1, "content": "[2026-09-17 11:26] 我: 我又点了拌粉"},
+        {"rank": 2, "content": "[2026-09-17 12:34] 我: 去拿外卖"},
+    ]
+    report = assess('11:26 你说“我又点了拌粉” [来源 0]', sources)
+    assert report.citation_mismatches == ()
+    assert "citations bind" in report.summary_line()
+
+
+def test_the_rendered_panel_shows_the_binding_mismatch() -> None:
+    """The product surface, not just the report object, must carry the caveat."""
+    from recall import render_groundedness
+
+    sources = [
+        {"rank": 1, "content": "[2026-09-17 07:27] 我: 早\n[2026-09-17 11:26] 我: 我又点了拌粉"},
+        {"rank": 2, "content": "[2026-09-17 12:34] 我: 去拿外卖"},
+    ]
+    rendered = render_groundedness(assess('11:26 你说“我又点了拌粉” [来源 1]', sources))
+    assert "binding mismatch" in rendered
+    assert "appears in Source [0]" in rendered
+    assert "我又点了拌粉" in rendered
 
 
 def test_empty_answer_is_handled() -> None:
