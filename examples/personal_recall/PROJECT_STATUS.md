@@ -29,6 +29,7 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | 14    | **Groundedness in the product surface**                        | ✅ done — gold-free caveats in `recall.py`; attribution signal is an **alarm** (0–1/arm), silence claims a **reminder** (~30%%/arm); product now ships A12 |
 | 15    | **Real-export ingestion (`chat_import.py` + product guard)**    | ✅ done — 4 layouts converted + **round-trip verified through the engine adapter**; un-ingestible corpora now fail loudly instead of answering from an empty index |
 | 16    | **Product = evaluated system (parity, enforced)**              | ✅ done — `recall.build_session` is the single path; retrieval parity with the A12 arm **36/36**, pinned by 5 structural tests + the committed artifact |
+| 17    | **Entry point (`README.md`) with drift tests**                 | ✅ done — quickstart for import → ask → read; 15 tests keep every documented script and flag true to the code |
 | 8     | Persistence (PostgreSQL + pgvector)                            | ⏸                                                                                                                           |
 | 9     | Product UI                                                     | ⏸                                                                                                                           |
 | 10    | Multimodal recall                                              | ⏸                                                                                                                           |
@@ -2026,3 +2027,52 @@ guessing further formats would be speculation dressed as work. This gate therefo
 sample (even the first 20 lines, or just the shape) rather than inventing one. Everything else the log
 lists as ⏸ — persistence (Phase 8), a UI (Phase 9), multimodal (Phase 10) — is additive scope beyond
 the recall core, not a gap in it.
+
+---
+
+# Phase 17 — an entry point a new user can actually follow, kept honest by tests
+
+## Why this was the remaining gap
+
+Seventeen phases produced 16 instruments, 162 tests and a 1,200-line decision log — and no document
+that tells someone how to *use* the thing. `PROJECT_STATUS.md` is a measurement record, not a
+quickstart: it explains what was rejected and why, which is the right content for a decision log and
+the wrong content for a first run.
+
+`README.md` now covers the three things a user needs: bring your own export, ask a question, read the
+answer (including what the groundedness caveats mean and how much to trust each one). It also lists
+the commands that regenerate the measurements, the layout of the directory, and the known limits.
+
+## Documentation drifts, so the README is tested
+
+A README that names a flag renamed two phases ago fails at the first thing a new user tries. So
+`tests/test_readme.py` (15 tests) parses the fenced commands out of `README.md` and checks them against
+the code:
+
+* every documented script exists;
+* every documented `--flag` is **declared** by that script's argparse;
+* the quickstart still shows `--corpus` and `--json` for the product CLI;
+* the README links the decision log, and still states the limitations.
+
+The flag check reads `add_argument("--…")` statically rather than spawning `--help`. That was tried
+first and cost a full RAG-stack import per script — nine subprocesses, over two minutes for one test
+module. Static parsing is immediate and catches the drift that matters (a renamed flag no longer
+matches); the authoritative end-to-end probe is kept for `recall.py`, the command a user runs first.
+
+One of the tests exists purely to keep the document honest about its own subject: the README must still
+state that five queries are unreachable, that ingestion is text-only, and that answers are not
+textually reproducible. A README that only sells the happy path is not the document this project
+keeps.
+
+## Note on the process hazard from Phase 15
+
+Phase 15 recorded that a PowerShell `Get-Content -Raw | Set-Content` round trip destroyed two files by
+re-encoding them. This phase hit the same pattern again while removing two unused imports, and this
+time the file survived — because `-Encoding UTF8` was passed explicitly. The failure needs the encoding
+to be omitted; with it, the round trip is safe for UTF-8 content. The standing rule is unchanged (use
+the file tools), and the file was verified to decode as UTF-8 with zero replacement characters
+immediately afterwards rather than assumed to be fine.
+
+## Decision
+
+The core version is complete, self-consistent, and now documented for someone who is not me.
