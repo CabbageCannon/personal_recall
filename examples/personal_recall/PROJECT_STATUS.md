@@ -2561,3 +2561,176 @@ should be ones you already know the answer to — that is what makes the manual 
 
 The adopted product path (retrieval, chunking, prompt, k, hybrid pool, workflow) was **not changed** in
 any of the four phases.
+
+---
+
+# Phase 19 — account-wide multi-conversation ingestion
+
+## The problem, stated precisely
+
+Phase 18B made *one* conversation survive being split across `MSG0/MSG1/MSG2`. Phase 19 is the step
+that turns that into an account: hundreds of conversations, each of them possibly split across those
+same shards, all of them reaching one recall index.
+
+The naive extension is the trap. Exporting everything into one directory and running the Phase 18B
+merge over it produces an event stream where Alice at 10:00, Bob at 10:01 and a group at 10:02 are
+adjacent — and a session builder whose boundary rule is temporal adjacency will fuse them into one
+retrieval unit. The messages are unrelated; only their timestamps are close.
+
+## The ordering rule
+
+```
+(shard, conversation) exports
+          ↓
+group BY CONVERSATION        <- always first
+          ↓
+merge shards WITHIN a conversation
+          ↓
+sessions built per conversation
+          ↓
+one global index
+```
+
+`memory/account.py` enforces this by **returning `dict[conversation_id, list[MemoryEvent]]`**, never a
+flat stream. A caller that wants to build sessions must go through `build_account_sessions`, which
+loops conversations and calls `build_sessions` once per conversation. There is deliberately no API
+that hands out a merged account-wide event list, because that is the object from which the bug is
+built.
+
+## Files changed
+
+| file | change |
+| ---- | ------ |
+| `memory/conversations.py` | **new** — conversation identity: talker ids, descriptors, listing parsing, shard-name normalisation |
+| `memory/account.py` | **new** — grouping, per-conversation merge, import report, boundary checker |
+| `exporter.py` | **new** — the only code that touches the real account: shard switching, listing, per-conversation export, the export tree + manifest |
+| `export_account.py` | **new** — CLI over `exporter.py`, with `--dry-run` |
+| `smoke_account.py` | **new** — anonymised real-account smoke |
+| `recall.py` | `--account` mode, `import_account_directory`, `build_account_brain`, `build_account_session`, and the shared `answer_question` recall path |
+| `memory/sessions.py` | conversation boundary in `build_sessions`; `conversation_id` on `MemoryChunk` |
+| `memory/__init__.py` | package exports |
+| `tests/test_account_isolation.py`, `test_account_ingestion.py`, `test_account_tree.py`, `test_exporter.py` | **new** — 120+ tests |
+
+## Key decisions
+
+* **Identity is the talker (`StrTalker` / `sessions --json` `username`), never a display name.**
+  Nicknames, remarks and group names are all editable, and two contacts can share one. They are
+  carried as `aliases` for the UI and are not usable as a key. A WeFlow export contains **no
+  conversation field at all**, so identity comes from outside the file: the export invocation and the
+  file name `{talker}_messages.json`. The orchestrator writes each shard's listing to `sessions.json`
+  so a renamed file does not silently lose its conversation.
+
+* **Dedup stays conservative**: `serverId` only, applied *within* a conversation. `localId` repeats
+  across conversations and shards, so deduplicating on it drops real messages. Messages with no
+  `serverId` are kept and counted (`undedupeable`) rather than guessed at.
+
+* **The conversation boundary is checked, not promised.** `crossed_conversation_chunks()` recomputes
+  chunk membership from event ids and `recall.import_account_directory` raises on a violation. The
+  phase's hard rule is a runtime assertion on real data, not only a test fixture.
+
+* **Shard switching without touching the user's config.** `weflow-cli` opens exactly one database per
+  run, so an account export must point it at each shard in turn. `exporter.py` reads the real
+  `~/.weflow-cli/config.json` **once**, writes a patched copy into a temp scratch profile, and deletes
+  it on every exit path including a crash. The real config is never written; a test hashes it before
+  and after to prove it. **The scratch profile contains a copy of the decrypt key**, which is why its
+  cleanup is asserted directly and why the mechanism is documented as depending on the current
+  `weflow-cli` config layout.
+
+* **The manifest holds counts, never people.** `shard_manifest.json` records detected vs exported
+  shards so a shard that exists but was never exported is detectable. It is the file most likely to be
+  copied around, so a test asserts it contains no talker, no display name and no message text.
+
+## Completeness: two independent ways to be PARTIAL
+
+`AccountImportReport.partial` is true when **either**
+
+1. a message shard exists on disk but produced no export (`missing_shards`), or
+2. the export was narrowed with a conversation filter (`filtered_conversations > 0`).
+
+The second case was **found by running the real smoke**, not by a test. `export_account.py --only`
+writes each shard's *full* listing but exports only the named conversations; when the selected
+conversations happen to span every shard, every shard is "exported", `missing_shards` is empty, and the
+report called 8 conversations out of 272 a complete account. The near-miss is what hid it: when a
+filtered conversation is absent from some shard, that shard produces no export and *does* land in
+`missing_shards`. The bug appears exactly when the report looks most trustworthy.
+
+The two causes are reported as two separate warnings with different next actions — "a shard failed,
+re-run the export" versus "nothing is broken, there is simply more account than you asked for".
+
+## Verification
+
+**Synthetic account, 3 shards / 4 conversations** (A spans 3 shards, B spans 2, C is shard-local,
+group D spans shard 0 and 2), with duplicate `serverId`s, reused `localId`s, lookalike contacts,
+display-name changes and time-interleaved messages: conversation isolation, shard merge, ordering,
+dedupe, stable ids, coverage, PARTIAL warnings, indexing and recall all pass.
+
+The requirement's own scenario is a named test —
+`test_brief_scenario_two_lookalike_conversations_stay_separate`:
+
+```
+10:00 A: 吃饭吗   10:01 B: 吃饭吗   10:02 A: 可以   10:03 B: 不去了
+```
+
+One minute apart, two messages byte-identical, all four on one calendar day. The requirement is two
+two-message chunks; a global merge plus temporal segmentation gives one four-message chunk. A companion
+test re-runs it with `max_gap` and `max_chars` effectively infinite, so the *only* thing separating the
+conversations is the boundary itself. A third test hands a deliberately mixed stream straight to
+`build_sessions` to prove the second line of defence, and a fourth asserts the library's own boundary
+checker actually fails when a violation is injected — otherwise every "no violation" assertion above
+would be vacuous.
+
+**Real account (read-only, anonymised).** `smoke_account.py` on this machine's `Msg/Multi`:
+
+```
+message shards detected : 3 ['MSG0', 'MSG1', 'MSG2']      (FTSMSG*/MediaMSG* excluded)
+conversations discovered: 8 selected of a bounded sample   (7 group, 1 direct)
+message shards exported : 3 of 3 detected
+messages                : 21154 kept of 21154 (0 duplicates removed; 12 without serverId)
+coverage                : 2025-05-21 21:10 .. 2026-09-17 19:05
+sessions                : 1222 chunk(s)
+conversations indexed   : 8
+boundary check          : OK - no chunk mixes two conversations
+merged conversations    : 6 of 8 span more than one shard (2-3 shards each)
+```
+
+Real shards do overlap heavily — 449 listings union to 272 distinct conversations — so cross-shard
+merging is the normal case, not an edge case. The smoke prints counts, shard names, date ranges and
+10-character digests only: no wxid, no display name, no message text. Its export lands in
+`data/real/`, which `.gitignore` excludes.
+
+**Tests:** see the closing status table for the current count. The adopted product path — retrieval,
+chunking, prompt, `k`, hybrid pool, workflow — was **not changed** in this phase, and
+`test_product_parity.py` now enforces structurally that the adopted config is constructed in exactly
+one place, because Phase 19 added a second *entry* point that could have grown its own copy.
+
+## Known limits
+
+* **WAL.** `MSG*.db-wal` can hold the newest messages and `weflow-cli` reads the database, not the log.
+  An export is committed history, not a guarantee of the newest messages. `export_account.py` prints
+  this caveat on every run; it is not fixed, only stated.
+* **The filter count lives only in `shard_manifest.json`.** A narrowed tree whose manifest was deleted,
+  or written by an older exporter, still looks complete when every shard directory is present — the
+  per-shard listings are deliberately full, so nothing else on disk reveals the narrowing.
+* **Identity depends on the export file name.** `{talker}_messages.json` is the only place a
+  conversation id exists in the tree. `exports_from_directory` accepts a `conversation_ids` map for
+  callers that have a recorded mapping, but the orchestrator does not currently write one.
+* **`exporter.AccountExportReport.partial` tracks missing shards only.** The export-side report says
+  "3 exported of 3 detected" plus a note for a narrowed export; the *import* side is the one that must
+  not overclaim, and it is the one that reports PARTIAL.
+
+## Phase 19: status
+
+| requirement | state |
+| ----------- | ----- |
+| discover every conversation of the account | ✅ `list_conversations` per shard, unioned (`sessions --json`) |
+| stable conversation identity | ✅ talker id; display name is an alias, never a key |
+| merge a conversation across shards | ✅ event-level merge, `serverId` dedupe, `createTime` ordering |
+| conversations never share a session | ✅ runtime checker + a test whose injected violation must trip it |
+| one index for every conversation | ✅ `build_account_brain` over per-conversation chunks |
+| deterministic / testable | ✅ two runs produce identical chunk ids and content |
+| synthetic account end-to-end | ✅ 3 shards / 4 conversations, all shapes |
+| real smoke | ✅ 3 real shards, 8 conversations, 21154 messages, boundary OK |
+| partial-history completeness report | ✅ two independent causes, reported separately |
+| real-data protection | ✅ `data/real/` ignored; smoke prints digests only; manifest carries no identity |
+| old single-conversation path | ✅ unchanged; text path proven byte-identical |
+| product parity regression | ✅ `test_product_parity.py` extended, passing |

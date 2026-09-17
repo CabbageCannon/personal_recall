@@ -5,6 +5,9 @@ Deterministic rule set (§27) — no NLP, no model:
 * **temporal adjacency** — a new session starts when the gap to the previous
   message exceeds ``max_gap`` (a different calendar day always breaks, because a
   gap can only be small within the same day);
+* **conversation boundary** — a new session starts whenever the conversation id
+  changes, so two conversations can never share a chunk no matter how close their
+  messages are in time. (Phase 19; a no-op for single-conversation corpora.)
 * **budget** — a new session starts when adding the next message would exceed
   ``max_chars``, so a single long burst still produces embeddable units;
 * ids/timestamps/participants are carried on the chunk so later phases can filter
@@ -89,8 +92,14 @@ def build_sessions(
             previous = current[-1]
             gap = event.timestamp - previous.timestamp
             same_day = event.timestamp.date() == previous.timestamp.date()
+            # A conversation boundary is absolute: two messages from different conversations must never
+            # share a chunk, however close in time or similar in content. For every single-conversation
+            # corpus this is a no-op (all events carry the same id), which is why it cannot move the
+            # evaluated baselines; for a mixed-conversation input it is the difference between correct
+            # sessions and conversations bleeding into each other.
+            same_conversation = event.conversation_id == previous.conversation_id
             would_overflow = current_chars + len(event.line) + 1 > cfg.max_chars
-            if (not same_day) or gap > cfg.max_gap or would_overflow:
+            if (not same_day) or (not same_conversation) or gap > cfg.max_gap or would_overflow:
                 flush()
         current.append(event)
         current_chars += len(event.line) + 1
@@ -105,9 +114,19 @@ def _to_chunk(
     conversation_id: str,
     config: SessionConfig,
 ) -> MemoryChunk:
+    # The ``conversation_id`` parameter is authoritative — it is the caller's statement about which
+    # conversation this stream is, and every caller in the repo passes the id its events carry (the
+    # evaluated text path passes "txt"/"stress", the WeFlow paths pass "weflow", the account path passes
+    # the conversation it parsed with). The events' own id is only a fallback for an empty parameter.
+    #
+    # Deliberately NOT the other way round: letting the events win would silently ignore a caller's
+    # parameter, which changes the chunk-id contract for a single-conversation corpus (the baselines use
+    # those ids). The runtime guard `crossed_conversation_chunks` is what actually proves a chunk never
+    # holds two conversations, and it does so from the event ids rather than from this field.
+    own_conversation = conversation_id or events[0].conversation_id
     return MemoryChunk(
-        id=f"{conversation_id}-session-{index:04d}",
-        conversation_id=conversation_id,
+        id=f"{own_conversation}-session-{index:04d}",
+        conversation_id=own_conversation,
         start_time=events[0].timestamp,
         end_time=events[-1].timestamp,
         participants=tuple(sorted({e.sender_name for e in events})),

@@ -31,8 +31,45 @@ def test_main_has_no_second_construction_path() -> None:
 
 def test_build_session_is_the_shared_constructor() -> None:
     source = inspect.getsource(recall.build_session)
-    for piece in ("register_answer_prompt", "LLMEndpointConfig(", "RetrievalConfig(", "build_brain("):
+    for piece in (
+        "register_answer_prompt",
+        "build_llm_config(",
+        "build_retrieval_config(",
+        "build_brain(",
+    ):
         assert piece in source, f"build_session lost {piece}"
+
+
+def test_the_adopted_config_is_constructed_in_exactly_one_place() -> None:
+    """The single construction path, stated structurally rather than by string match.
+
+    Phase 19 added a second *entry* point — an account of many conversations — so the risk is no longer
+    "main() builds the config inline again" (that is pinned above) but "the account path grew its own
+    copy". Both paths must call `build_llm_config`/`build_retrieval_config`, and those two functions must
+    be the only module-level code that constructs these objects at all.
+    """
+    expected_owner = {
+        "LLMEndpointConfig(": "build_llm_config",
+        "HybridConfig(": "build_retrieval_config",
+        "RetrievalConfig(": "build_retrieval_config",
+    }
+    functions = {
+        name: obj
+        for name, obj in vars(recall).items()
+        if inspect.isfunction(obj) and obj.__module__ == recall.__name__
+    }
+    for factory, owner in expected_owner.items():
+        builders = sorted(
+            name for name, obj in functions.items() if factory in inspect.getsource(obj)
+        )
+        assert builders == [owner], (
+            f"{factory} must be constructed only in {owner}(), found in {builders}"
+        )
+
+    for entry_point in (recall.build_session, recall.build_account_brain):
+        source = inspect.getsource(entry_point)
+        for piece in ("register_answer_prompt", "build_llm_config(", "build_retrieval_config("):
+            assert piece in source, f"{entry_point.__name__} lost {piece}"
 
 
 def test_defaults_match_the_adopted_reference() -> None:
