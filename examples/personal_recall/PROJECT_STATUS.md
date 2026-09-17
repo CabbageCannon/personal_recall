@@ -30,6 +30,8 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | 15    | **Real-export ingestion (`chat_import.py` + product guard)**    | ✅ done — 4 layouts converted + **round-trip verified through the engine adapter**; un-ingestible corpora now fail loudly instead of answering from an empty index |
 | 16    | **Product = evaluated system (parity, enforced)**              | ✅ done — `recall.build_session` is the single path; retrieval parity with the A12 arm **36/36**, pinned by 5 structural tests + the committed artifact |
 | 17    | **Entry point (`README.md`) with drift tests**                 | ✅ done — quickstart for import → ask → read; 15 tests keep every documented script and flag true to the code |
+| 18A   | **WeFlow JSON source adapter (real WeChat, direct)**           | ✅ done — JSON → `MemoryEvent` with no TXT relay; text path proven **byte-identical (720/720)**; real-data leak found and closed |
+| 18B   | WeChat 3.x multi-shard completeness (`MSG*.db`)                 | ⏸ next — needs the exporter's 3.x DB access read first; patch-vs-layer decision to present before coding |
 | 8     | Persistence (PostgreSQL + pgvector)                            | ⏸                                                                                                                           |
 | 9     | Product UI                                                     | ⏸                                                                                                                           |
 | 10    | Multimodal recall                                              | ⏸                                                                                                                           |
@@ -2076,3 +2078,99 @@ immediately afterwards rather than assumed to be fine.
 ## Decision
 
 The core version is complete, self-consistent, and now documented for someone who is not me.
+
+---
+
+# Phase 18A — WeFlow JSON source adapter (real WeChat data, direct)
+
+## The gap
+
+A real WeChat export had been answered successfully, but only through
+``WeFlow JSON → hand-written script → canonical TXT → MemoryEvent``. That works and proves the recall
+path, but it makes a scratch script part of the architecture and discards every field the exporter
+provides. This phase makes the JSON a first-class source.
+
+## Files changed
+
+| file | change |
+| ---- | ------ |
+| `memory/weflow.py` | **new** — the adapter: WeFlow schema → `MemoryEvent`. No retrieval/embedding/chunking/LLM logic. |
+| `memory/processor.py` | `WeFlowSessionProcessor` (registered for `.json`) + the document builder extracted into one shared `_session_documents()` |
+| `memory/__init__.py` | exports the adapter |
+| `recall.py` | `register_source_processors()`, `--source-format`, a format-aware ingestion guard, and a narrow suppression of a misleading framework warning |
+| `.gitignore` (this dir, **new**) + root `.gitignore` | real-data protection |
+| `tests/test_weflow_adapter.py`, `tests/test_weflow_wiring.py`, `tests/test_text_path_unchanged.py` | **new** — 69 tests |
+
+## Key design decisions
+
+* **No Core changes.** `FileExtension` has no `json` member, but `get_file_extension()` falls back to
+  the raw string `'.json'` and the processor registry accepts string keys — so the adapter registers
+  under that string. `core/quivr_core/**` was not touched (it also holds your uncommitted annotations).
+* **`isSend` decides the speaker, never the identity.** `1 → "我"`, `0 → "对方"`. The
+  speaker-attribution safety logic depends on the literal `"我"`; substituting a wxid or display name
+  would silently disable it. The real `senderUsername` is preserved in metadata.
+* **Body priority** `parsedContent → content → rawContent`, first non-empty.
+* **Internal payloads never reach retrieval.** Real exports carry multi-KB `<msg><emoji …/></msg>`
+  blobs. Detection is **two-tier**, because `<msg>` is only the wrapper — the informative element is
+  inside it; matching the wrapper first reported a stock emoji as generic non-text (a bug the tests
+  caught). Payloads become a short placeholder (`[表情]`/`[图片]`/…) so the message keeps its timeline
+  position without polluting the embedding corpus. A message with no readable text becomes
+  `[非文本消息]` rather than vanishing.
+* **Ids are deterministic and never `localId` alone**: `conversation_id` + (`serverId` when present) +
+  `localId`, with a positional fallback. A collision is disambiguated and counted — **never resolved by
+  dropping a message**.
+* **Events are sorted chronologically before session building.** `build_sessions` consumes sequence
+  order and never re-sorts, so an out-of-order export would fragment into one chunk per message (the
+  Phase M2 failure). Ties keep exporter order, so the sort is stable.
+* **Both payload shapes accepted**: a bare list, and a versioned envelope with `messages`. Unknown
+  fields are preserved in metadata, not rejected.
+
+## Verification
+
+**End-to-end, through the product CLI**, on a synthetic WeFlow export (20 messages, 3 days):
+
+```
+corpus   : synthetic_weflow.json  (source=weflow)
+ingested : 20 messages (types: {'image': 1, 'sticker': 1, 'text': 18}, suppressed payloads: 1)
+Answer   : 我试 Neon 时发现：能连上，但免费层会休眠（…冷启动），所以我先不用它，回到了原来的方案 [来源 0]
+Evidence : synthetic_weflow-session-0002 …
+Groundedness: 1 citation(s) | no silence claims | no attribution flags
+```
+
+**Product = Eval path: UNCHANGED, and proven so.** `tests/test_text_path_unchanged.py` rebuilds the
+corpus-v2 retrieval units through the real processor and compares every chunk against the contents the
+recorded A12 arm stored: **720/720 sources reproduced exactly, 199/199 cited chunk ids intact**, and
+`conversation_id` is still `"txt"`. Nothing in the measured path moved.
+
+**Tests:** 231 pass (was 162; +69). JSON artifacts valid; frozen baselines byte-identical.
+
+## A real privacy incident, found and fixed
+
+The privacy check was not hypothetical. Two files from the real smoke test were sitting **untracked and
+NOT ignored** in the working tree — `data/wechat_smoke.txt` (real chat lines) and `recall_debug.json`
+(45 KB: the real question plus retrieved sources). A single `git add -A` would have committed real
+WeChat content. Neither was committed here.
+
+Fixes: this directory now has a `.gitignore` covering real WeFlow JSON, converted real corpora,
+`MSG*.db` and its `-wal`/`-shm` sides, key material, and the actual leaked filenames; the root
+`.gitignore` covers the `.tmp_*/` scratch trees that `git add -A` would also have swept up. All of it is
+**tested** with `git check-ignore` — 14 sensitive paths must be ignored and 6 synthetic corpora must
+stay trackable, so a `.gitignore` that matches nothing fails the suite.
+
+Also restored: `stress_validation.json` had been overwritten with a *v2* validation, destroying the
+frozen Phase 0.5 v1 record; it was reverted to HEAD rather than committed.
+
+## Scope discipline
+
+Retrieval, chunking, prompt, k, hybrid pool and workflow defaults were **not** touched. No new
+retrieval experiments. The only product-path change is that a second *source* is now readable.
+
+## Next phase (not started)
+
+**18B — WeChat 3.x multi-shard completeness.** Reading only `MSG0.db` when `MSG1`/`MSG2` exist silently
+loses the newest history, which is the `No Data Loaded ≠ No Memory Exists` failure this project refuses
+to ship. That requires reading the exporter's 3.x DB access code and deciding between patching
+`weflow-cli` and building a DevPilot-side merge layer — a decision I will present before writing code,
+as requested.
+
+Stopping here for review, as instructed.

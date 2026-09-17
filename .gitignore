@@ -7,6 +7,16 @@ env.sh
 toto.txt
 log.txt
 
+# ---------------------------------------------------------------------------------------------
+# DevPilot / Personal Recall local scratch and real chat data. None of this may be committed:
+# the export JSON, the converted corpora and the debug dumps all contain real message bodies,
+# real names and wxids. Synthetic corpora under examples/personal_recall/data/ stay tracked.
+# ---------------------------------------------------------------------------------------------
+.tmp_*/
+examples/personal_recall/data/wechat*.txt
+examples/personal_recall/data/real/
+examples/personal_recall/recall_debug*.json
+
 backend/venv
 backend/.env
 backend/*.deb
@@ -104,3 +114,5 @@ backend/core/examples/chatbot/.chainlit/translations/en-US.json
 Pipfile
 *.pkl
 backend/docs/site/*
+
+output/*

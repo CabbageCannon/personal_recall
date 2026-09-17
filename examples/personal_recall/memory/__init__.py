@@ -13,11 +13,14 @@ time ranges to attach to.
 
 from .events import MemoryEvent, parse_txt_events
 from .sessions import MemoryChunk, SessionConfig, build_sessions
+from .weflow import WeFlowParseResult, parse_weflow_events
 
 __all__ = [
     "MemoryEvent",
     "MemoryChunk",
     "SessionConfig",
+    "WeFlowParseResult",
     "build_sessions",
     "parse_txt_events",
+    "parse_weflow_events",
 ]

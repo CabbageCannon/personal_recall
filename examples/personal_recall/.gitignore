@@ -1,0 +1,57 @@
+# ---------------------------------------------------------------------------------------------
+# Real chat data must never be committed.
+#
+# The stress corpora under data/ are SYNTHETIC and stay tracked. Anything derived from a real
+# WeChat account is not, and the safe convention is to keep it in `data/real/` (ignored entirely)
+# or outside the repository altogether.
+#
+# What counts as real and sensitive here:
+#   * raw WeFlow JSON exports — message bodies, wxids, serverIds
+#   * converted TXT corpora built from real chats (the canonical form is still real content)
+#   * WeChat message databases and anything decrypted out of them
+#   * the 3.x decrypt key, or any file that carries it
+# ---------------------------------------------------------------------------------------------
+
+# real corpora, by location
+data/real/
+.local/
+private/
+
+# real corpora, by name (so an accidental export in data/ is still caught)
+real_*.txt
+my_chat*.txt
+my_export*.txt
+*_export.json
+weflow*.json
+*.weflow.json
+
+# Named after the actual files a real smoke test produced locally — these were found sitting
+# untracked and NOT ignored, one `git add -A` away from committing real chat lines.
+wechat*.txt
+wechat_*.json
+*_smoke.txt
+smoke_*.txt
+recall_debug*.json
+*_debug.json
+
+# WeChat databases and their derivatives
+MSG*.db
+MSG*.db-*
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# key material — never in the repo, never in a log
+*.key
+*_key.txt
+wechat_key*
+decrypt_key*
+
+# local environment
+.env
+.env.*
+
+# scratch produced by offline tests
+tests/_scratch_*/

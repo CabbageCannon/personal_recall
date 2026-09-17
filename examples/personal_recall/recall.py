@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import warnings
 from pathlib import Path
 from uuid import uuid4
 
@@ -43,7 +44,8 @@ from evidence_cards import build_evidence_cards, cards_to_dict, render_cards
 from groundedness import assess
 from memory import SessionConfig
 from memory.events import parse_txt_events
-from memory.processor import ConversationSessionProcessor
+from memory.processor import ConversationSessionProcessor, WeFlowSessionProcessor
+from memory.weflow import parse_weflow_events
 from run_baseline import register_answer_prompt, serialize_sources
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -64,6 +66,13 @@ DEFAULT_MAX_SESSION_CHARS = 900
 #: A12 is the adopted product reference: the A11 prompt plus the speaker-attribution clause that
 #: removed the cross-speaker fabrications (PROJECT_STATUS.md, Phase 12).
 DEFAULT_ANSWER_PROMPT = "cited-attributed"
+
+#: `FileExtension` has no json member, and `get_file_extension()` falls back to the raw suffix string;
+#: the processor registry accepts string keys, so this is what a WeFlow corpus is registered under.
+JSON_EXTENSION = ".json"
+
+#: The adapter that reads a corpus, by name.
+SOURCE_FORMATS = ("text", "weflow")
 
 
 def render_groundedness(report) -> str:
@@ -87,22 +96,68 @@ def render_groundedness(report) -> str:
     return "\n".join(lines)
 
 
+def register_source_processors() -> None:
+    """Register the retrieval-unit processor for every supported corpus format.
+
+    The framework resolves a processor by the file's extension, so each corpus format needs its own
+    registration. Both are registered unconditionally (a `.txt` corpus never touches the `.json`
+    entry and vice versa), which keeps a run's behaviour determined by the file it is given.
+    """
+    register_processor(FileExtension.txt, ConversationSessionProcessor, override=True)
+    # `get_file_extension()` returns the raw string ".json" because FileExtension has no json member;
+    # the registry accepts plain strings, so no Core change is needed.
+    register_processor(JSON_EXTENSION, WeFlowSessionProcessor, override=True)
+
+
+def detect_source_format(corpus: Path) -> str:
+    """Infer the corpus format from its extension."""
+    if corpus.suffix.lower() == JSON_EXTENSION:
+        return "weflow"
+    return "text"
+
+
+def count_corpus_events(corpus: Path, source_format: str) -> tuple[int, int, str]:
+    """Return ``(n_events, n_skipped, detail)`` for a corpus, using the matching adapter."""
+    raw = corpus.read_text(encoding="utf-8-sig", errors="replace")
+    if source_format == "weflow":
+        parsed = parse_weflow_events(json.loads(raw))
+        detail = (
+            f"{len(parsed.events)} messages "
+            f"(types: {dict(sorted(parsed.message_types.items()))}, "
+            f"suppressed payloads: {parsed.suppressed_payloads})"
+        )
+        return len(parsed.events), parsed.skipped, detail
+    parsed_txt = parse_txt_events(raw)
+    return len(parsed_txt.events), parsed_txt.skipped_lines, f"{len(parsed_txt.events)} messages"
+
+
 def build_brain(corpus: Path, llm_config: LLMEndpointConfig) -> Brain:
     """Ingest one chat log as conversation sessions."""
-    register_processor(FileExtension.txt, ConversationSessionProcessor, override=True)
-    return Brain.from_files(
-        name=f"personal_recall_{corpus.stem}",
-        file_paths=[corpus],
-        llm=LLMEndpoint.from_config(llm_config),
-        embedder=HuggingFaceEmbeddings(
-            model_name=str(EMBEDDING_MODEL_PATH),
-            model_kwargs={"device": "cpu"},
-            encode_kwargs={"normalize_embeddings": True},
-        ),
-        processor_kwargs={
-            "session_config": SessionConfig(max_chars=DEFAULT_MAX_SESSION_CHARS)
-        },
-    )
+    register_source_processors()
+    with warnings.catch_warnings():
+        # `FileExtension` has no json member, so the framework warns "extension isn't recognized.
+        # Make sure you have registered a parser for .json" while building the file record — even
+        # though the processor IS registered (under the string key the same function returns). The
+        # warning is a false alarm for a JSON corpus and would otherwise tell a user their working
+        # setup is broken, so it is suppressed for exactly that message and no other.
+        warnings.filterwarnings(
+            "ignore",
+            message=r".*extension isn't recognized.*",
+            category=UserWarning,
+        )
+        return Brain.from_files(
+            name=f"personal_recall_{corpus.stem}",
+            file_paths=[corpus],
+            llm=LLMEndpoint.from_config(llm_config),
+            embedder=HuggingFaceEmbeddings(
+                model_name=str(EMBEDDING_MODEL_PATH),
+                model_kwargs={"device": "cpu"},
+                encode_kwargs={"normalize_embeddings": True},
+            ),
+            processor_kwargs={
+                "session_config": SessionConfig(max_chars=DEFAULT_MAX_SESSION_CHARS)
+            },
+        )
 
 
 def build_session(
@@ -152,6 +207,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Ask your chat history, with evidence.")
     parser.add_argument("question", help="the memory question to ask")
     parser.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
+    parser.add_argument(
+        "--source-format",
+        choices=("auto",) + SOURCE_FORMATS,
+        default="auto",
+        help="corpus adapter: 'text' (canonical TXT) or 'weflow' (WeFlow JSON export). "
+        "'auto' (default) infers it from the file extension.",
+    )
     parser.add_argument("--k", type=int, default=DEFAULT_K)
     parser.add_argument("--hybrid-pool", type=int, default=DEFAULT_HYBRID_POOL)
     parser.add_argument(
@@ -171,24 +233,45 @@ def main() -> int:
     parser.add_argument("--json", action="store_true", help="emit machine-readable output")
     args = parser.parse_args()
 
+    source_format = (
+        detect_source_format(args.corpus) if args.source_format == "auto" else args.source_format
+    )
+
     if not args.json:
-        print(f"corpus   : {args.corpus}")
+        print(f"corpus   : {args.corpus}  (source={source_format})")
         print(f"config   : k={args.k}, hybrid pool={args.hybrid_pool}, workflow={args.workflow}, "
               f"prompt={args.answer_prompt}")
         print(f"question : {args.question}\n")
 
-    # Guard against the silent-ingestion failure: the engine's adapter accepts exactly one line
-    # format, so a real export in any other layout indexes zero messages and every question then
-    # answers "the record does not show it" without any error. Fail loudly and say what to run.
+    # Guard against the silent-ingestion failure: an adapter that matches nothing indexes zero
+    # messages and every question then answers "the record does not show it" without any error.
+    # Fail loudly and say what to run instead.
     if args.corpus.exists():
-        probe = parse_txt_events(args.corpus.read_text(encoding="utf-8-sig", errors="replace"))
-        if not probe.events:
+        try:
+            n_events, n_skipped, detail = count_corpus_events(args.corpus, source_format)
+        except (json.JSONDecodeError, OSError) as exc:
+            print(f"error: could not read {args.corpus} as {source_format}: {exc}", file=sys.stderr)
+            return 2
+        if not args.json:
+            print(f"ingested : {detail}")
+        if not n_events:
+            if source_format == "weflow":
+                hint = (
+                    "A WeFlow export should be a JSON list of messages, or an object with a\n"
+                    "'messages' list. Check that the file is the exporter's JSON, not the .db."
+                )
+            else:
+                hint = (
+                    "The text adapter reads one message per line as "
+                    "'[YYYY-MM-DD HH:MM] speaker: text'.\n"
+                    "Convert the export first:\n"
+                    f"  python chat_import.py --input {args.corpus} --out data/my_chat.txt\n"
+                    "  python chat_import.py --list-formats"
+                )
             print(
-                f"error: {args.corpus} yielded 0 messages ({probe.skipped_lines} line(s) skipped).\n"
-                "The engine reads one message per line as '[YYYY-MM-DD HH:MM] speaker: text'.\n"
-                "Convert your export first:\n"
-                f"  python chat_import.py --input {args.corpus} --out data/my_chat.txt\n"
-                "  python chat_import.py --list-formats",
+                f"error: {args.corpus} yielded 0 messages "
+                f"({n_skipped} entr{'y' if n_skipped == 1 else 'ies'} skipped) via the "
+                f"'{source_format}' adapter.\n{hint}",
                 file=sys.stderr,
             )
             return 2

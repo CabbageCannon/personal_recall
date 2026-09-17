@@ -33,6 +33,31 @@ re-parsing it through the engine's own adapter** — nothing is reported OK unle
 clean. An unrecognised file gets a diagnosis (per-layout match counts and the lines that failed)
 instead of silence.
 
+### WeFlow JSON exports (WeChat 3.x)
+
+A WeFlow JSON export is read **directly**, with no canonical-TXT step in between:
+
+```bash
+python recall.py "我今天中午吃了什么？" --corpus my_export.json
+python recall.py "我最后用了哪个库？" --corpus my_export.json --source-format weflow
+```
+
+`--source-format` defaults to `auto`, which infers the adapter from the file extension (`.json` →
+WeFlow, anything else → text). The adapter accepts either a bare JSON list of messages or a versioned
+envelope with a `messages` list, so an exporter that starts emitting a schema wrapper keeps working.
+
+Two properties matter for correctness:
+
+* **`isSend` decides the speaker**: `1` becomes `我`, `0` becomes `对方`. The speaker-attribution
+  safety logic depends on the literal `"我"`, so a wxid or display name is *never* substituted for it;
+  the real `senderUsername` is kept in metadata instead.
+* **Internal payloads never reach retrieval.** Real exports carry multi-KB `<msg><emoji …/></msg>`
+  blobs; these are replaced by a short placeholder (`[表情]`, `[图片]`, …) so the message keeps its
+  place on the timeline without polluting the embedding corpus.
+
+Messages are re-sorted chronologically before session building, because sessions are cut from sequence
+order: an out-of-order export would otherwise fragment into one chunk per message.
+
 ## 2. Ask a question
 
 ```bash
