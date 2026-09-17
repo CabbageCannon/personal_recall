@@ -31,7 +31,7 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | 16    | **Product = evaluated system (parity, enforced)**              | ✅ done — `recall.build_session` is the single path; retrieval parity with the A12 arm **36/36**, pinned by 5 structural tests + the committed artifact |
 | 17    | **Entry point (`README.md`) with drift tests**                 | ✅ done — quickstart for import → ask → read; 15 tests keep every documented script and flag true to the code |
 | 18A   | **WeFlow JSON source adapter (real WeChat, direct)**           | ✅ done — JSON → `MemoryEvent` with no TXT relay; text path proven **byte-identical (720/720)**; real-data leak found and closed |
-| 18B   | WeChat 3.x multi-shard completeness (`MSG*.db`)                 | ⏸ next — needs the exporter's 3.x DB access read first; patch-vs-layer decision to present before coding |
+| 18B   | WeChat 3.x multi-shard completeness (`MSG*.db`)                 | 🔍 investigated — single-file assumption confirmed in `sqlcipherCore.open()`; **A/B decision presented, awaiting yours**; recommend **B starting with B1** (offline merge of N shard JSONs) |
 | 8     | Persistence (PostgreSQL + pgvector)                            | ⏸                                                                                                                           |
 | 9     | Product UI                                                     | ⏸                                                                                                                           |
 | 10    | Multimodal recall                                              | ⏸                                                                                                                           |
@@ -2174,3 +2174,105 @@ to ship. That requires reading the exporter's 3.x DB access code and deciding be
 as requested.
 
 Stopping here for review, as instructed.
+
+---
+
+# Phase 18B — investigation and the patch-vs-layer decision (no code written yet)
+
+## What the exporter actually does
+
+Read from the installed package (`weflow-cli` 1.6.0, `%APPDATA%\npm\node_modules\weflow-cli`).
+
+**The single-file assumption is structural, not a per-query bug.** `sqlcipherCore.open()` is the whole
+3.x access layer:
+
+* signature is `open(dbPath: string, keyHex: string, wxid: string)` — **one** path (`sqlcipherCore.ts:336`);
+* it decrypts that one file to a temp path and opens **one** `DatabaseSync` (`:358-360`);
+* every query method (`getSessions`, `getMessages`, search, export) runs against `this.db`, that single
+  connection — there is no shard concept anywhere in the file (780 lines).
+
+Its own comment states the layout it assumes (`sqlcipherCore.ts:349`):
+
+```
+// dbPath: {wxDirRoot}/{wxid}/Msg/Multi/MSG0.db
+```
+
+and the 3.x connect path takes exactly one configured path (`chatService.ts:157`):
+`configService.get('dbPath3x')`.
+
+**So the reported symptom follows directly**: whichever single file is configured *is* the entire
+visible history. Configure `MSG0.db` and everything in `MSG1`/`MSG2` is invisible. The manual workaround
+— repointing `dbPath3x` at `MSG2.db` — is the only lever the current design offers.
+
+**The session-level defect is in the same place.** `getSessions()` (`:371-405`) computes
+
+```sql
+SELECT m.StrTalker, MAX(m.CreateTime) ... FROM MSG m GROUP BY m.StrTalker
+```
+
+against one shard, so a contact's "last message" is that shard's maximum. This is exactly the
+`global MAX(CreateTime)` requirement in the brief: aggregating across shards is not something a
+per-shard query can be patched into locally, it has to happen above the access layer.
+
+## Two facts that decide the options
+
+1. **No command can be pointed at a database.** Every command's options were enumerated; `sessions` takes
+   only `-k/-n/--json`, `chat` only `--top-k/--talker/--api-key/--dry-run/--yes/--json`. Paths and keys
+   come from persisted config, never from the command line.
+2. **The config location cannot be redirected by an environment variable.** It is hardcoded:
+   `CONFIG_DIR = join(homedir(), '.weflow-cli')`, `CONFIG_FILE = config.json`
+   (`configService.ts:89-90`). So per-shard runs would require either mutating the user's global config
+   between invocations, or redirecting `HOME`/`USERPROFILE` for the child process.
+
+## Option A — fork / patch `weflow-cli`
+
+Turn the 3.x layer from one connection into N: `openAll(dbPaths[])`, then fan out **every** query and
+merge above it (sort, stable tie-break, dedupe, global `MAX(CreateTime)`).
+
+* **Good**: correct at the source, and every consumer benefits at once (sessions, chat, MCP, export).
+* **Bad**: the fan-out has to be threaded through every query method, not just `getSessions`; the
+  package ships compiled `dist/` so a patch lives in a global npm directory that a reinstall or upgrade
+  erases; and DevPilot would end up maintaining a fork of a fast-moving third-party codebase. That is a
+  lot of surface for a project whose subject is recall quality, not exporter upkeep.
+
+## Option B — DevPilot-side shard merge layer (recommended)
+
+Keep the boundary the brief asks for — `WeFlow → stable JSON`, `DevPilot → MemoryEvent → Recall` — and
+put the merge where the adapter and the eval already live.
+
+Two layers, deliberately separable:
+
+* **B1 (the part that matters, testable offline, needs no database):** ingest **N** WeFlow JSON files as
+  one corpus. Merge by `createTime`, stable tie-break, dedupe; compute session `MAX(CreateTime)`
+  globally; and report which shard each message came from plus the covered time range. If a shard is
+  missing or unreadable, **fail loudly** rather than returning a smaller history — `No Data Loaded ≠ No
+  Memory Exists` is the whole point of the phase.
+* **B2 (automation on top, optional):** discover `Msg/Multi/MSG*.db`, export each shard by redirecting
+  `USERPROFILE` to a scratch home containing a copy of the config, then hand the JSON files to B1. No
+  global config mutation, and the decrypted temp filenames are already distinct per shard
+  (`basename(dbPath) + '.decrypted.db'`), so shards cannot collide.
+
+**Why B**: the merge logic is the part that can be wrong in interesting ways, and B puts it in the repo
+that owns the adapter, the tests and the eval — fully testable with synthetic per-shard JSON today,
+without the WeChat database. B1 also works if the user exports shards by hand, which is what they
+already did.
+
+**Honest costs of B**: B2 depends on a `USERPROFILE` redirect the exporter does not document, so it
+could break on a version bump; it means copying the user's config — including key material — into a
+scratch directory (DevPilot never *derives* a key, but the key would pass through a file DevPilot
+writes); it is N sequential invocations, so slower; and per-shard ordering is only as good as the
+`createTime` values, which is why the tie-break is explicit.
+
+## Incidental privacy finding (worth knowing regardless of the decision)
+
+While creating the connection, the exporter writes a **decrypted plaintext copy** of the real message
+database to the system temp directory — `join(os.tmpdir(), 'weflow_3x_decrypt')` +
+`basename(dbPath) + '.decrypted.db'` (`sqlcipherCore.ts:85,91`) — and deletes it on close (`:773`). A
+crash or a kill leaves plaintext chat history in `%TEMP%\weflow_3x_decrypt\`. That directory is outside
+this repo, so it is not a commit risk, but it is real data at rest outside the WeChat data directory
+and the user should know it exists.
+
+## Decision required
+
+A or B — and if B, whether to build only **B1** now (offline, testable, works with hand-exported shards)
+and treat **B2** as a later convenience. My recommendation is **B, starting with B1**.
