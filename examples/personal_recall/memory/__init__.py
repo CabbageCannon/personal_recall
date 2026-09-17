@@ -13,14 +13,28 @@ time ranges to attach to.
 
 from .events import MemoryEvent, parse_txt_events
 from .sessions import MemoryChunk, SessionConfig, build_sessions
+from .shards import (
+    MergeReport,
+    ShardInfo,
+    discover_message_shards,
+    discover_shard_files,
+    load_and_merge,
+    merge_shard_events,
+)
 from .weflow import WeFlowParseResult, parse_weflow_events
 
 __all__ = [
     "MemoryEvent",
     "MemoryChunk",
+    "MergeReport",
     "SessionConfig",
+    "ShardInfo",
     "WeFlowParseResult",
     "build_sessions",
+    "discover_message_shards",
+    "discover_shard_files",
+    "load_and_merge",
+    "merge_shard_events",
     "parse_txt_events",
     "parse_weflow_events",
 ]

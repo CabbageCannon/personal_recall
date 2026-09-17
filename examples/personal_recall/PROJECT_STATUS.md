@@ -31,7 +31,8 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | 16    | **Product = evaluated system (parity, enforced)**              | ✅ done — `recall.build_session` is the single path; retrieval parity with the A12 arm **36/36**, pinned by 5 structural tests + the committed artifact |
 | 17    | **Entry point (`README.md`) with drift tests**                 | ✅ done — quickstart for import → ask → read; 15 tests keep every documented script and flag true to the code |
 | 18A   | **WeFlow JSON source adapter (real WeChat, direct)**           | ✅ done — JSON → `MemoryEvent` with no TXT relay; text path proven **byte-identical (720/720)**; real-data leak found and closed |
-| 18B   | WeChat 3.x multi-shard completeness (`MSG*.db`)                 | 🔍 investigated — single-file assumption confirmed in `sqlcipherCore.open()`; **A/B decision presented, awaiting yours**; recommend **B starting with B1** (offline merge of N shard JSONs) |
+| 18B   | WeChat 3.x multi-shard completeness (`MSG*.db`)                 | ✅ done (B1) — event-level merge before sessioning; dedupe on `serverId` only; **PARTIAL-history warning** vs the real `Msg/Multi`; single-file path still 720/720 |
+| 18C   | Citation evidence consistency                                   | ⏸ next — offline; mechanical claim-vs-cited-chunk check as a groundedness warning |
 | 8     | Persistence (PostgreSQL + pgvector)                            | ⏸                                                                                                                           |
 | 9     | Product UI                                                     | ⏸                                                                                                                           |
 | 10    | Multimodal recall                                              | ⏸                                                                                                                           |
@@ -2276,3 +2277,108 @@ and the user should know it exists.
 
 A or B — and if B, whether to build only **B1** now (offline, testable, works with hand-exported shards)
 and treat **B2** as a later convenience. My recommendation is **B, starting with B1**.
+
+---
+
+# Phase 18B — multi-shard merge (option B1, as chosen)
+
+**Decision taken by the user: B, B1 only.** No exporter patch, no auto-discovery/auto-export (B2). The
+boundary stays `WeFlow → stable JSON` / `DevPilot → MemoryEvent → Recall`.
+
+## Files changed
+
+| file | change |
+| ---- | ------ |
+| `memory/shards.py` | **new** — discover shard exports, merge events, dedupe, per-shard provenance and union coverage |
+| `memory/__init__.py` | exports the shard API |
+| `memory/processor.py` | `_session_documents` → public `session_documents` (same definition, reused by the merged path) |
+| `recall.py` | `--corpus` accepts a **directory** of shard exports; `--shard-dir` for the completeness check; `build_brain_from_events` |
+| `README.md` | multi-shard usage |
+| `tests/test_shards.py` | **new** — 21 tests |
+
+## Key design decisions
+
+* **The merge happens at the `MemoryEvent` level, before session building.** Built via
+  `Brain.afrom_langchain_documents` over the merged sessions. Merging *output* instead would cut one
+  conversation into a chunk per shard and make a contact's "last message" the maximum of whichever
+  shard happened to be read.
+* **Chronology comes from `createTime`, never from the file name or its mtime.** The three shards on
+  this machine happen to be ordered by update time — a coincidence of this profile, not a property to
+  rely on. Ties break by `(shard label, position in shard)`, so the merged order is deterministic.
+* **Deduplication only on a strong identity — the exporter's `serverId`.** Without it there is no safe
+  cross-shard identity: WeFlow documents that `localId` repeats across conversations *and shards*, so
+  deduplicating on it would drop real messages. Those events are kept and counted as `undedupeable`,
+  and the report says so. `test_messages_without_server_id_are_never_deduplicated` pins this.
+* **A missing or malformed shard fails loudly.** `load_and_merge` raises rather than skipping;
+  a silently dropped shard is a silently smaller history.
+* **The completeness check.** `--shard-dir` (read-only, names only) reports the `MSG*.db` files that
+  exist versus how many were exported, and prints a `PARTIAL` warning when they differ. This is the
+  phase's whole point: **No Data Loaded ≠ No Memory Exists.**
+
+## Two framework requirements found the hard way
+
+1. **`asyncio.run()` breaks the later sync call.** It closes the loop it creates, so the subsequent
+   `brain.ask()` raises `no current event loop`. `Brain.from_files` uses `get_event_loop()` +
+   `run_until_complete()` and never closes; the merged path now mirrors that exactly.
+2. **Building from documents must supply `original_file_name`.** Doing so bypasses
+   `ProcessorBase.process_file`, which is what normally adds it. Without it the framework refuses to
+   render the document prompt (`combine_documents` injects `index` itself, but not this field). The
+   `"Filename: … Content: …"` prefix is deliberately *not* applied — `process_file` only adds it when
+   the inner metadata already carries the field, which is why the processor path's chunk text has no
+   prefix.
+
+## Verification
+
+**End-to-end through the product CLI**, on two synthetic shard exports (named `MSG0.json`/`MSG2.json`,
+deliberately sharing one `serverId`), with `--shard-dir` pointed at the real
+`...\Msg\Multi` on this machine (names read only — no database opened, no key material touched):
+
+```
+corpus   : synthetic_shards  (source=weflow, multi-shard)
+  shards merged : 2
+  messages      : 9 kept of 10 (1 duplicate(s) removed)
+  coverage      : 2026-09-14 09:30 .. 2026-09-17 13:02
+    MSG0   4 msgs  2026-09-14 09:30 .. 2026-09-15 21:15
+    MSG2   5 msgs  2026-09-15 21:20 .. 2026-09-17 13:02  (1 duplicate)
+  shard check   : 3 MSG*.db present ['MSG0.db', 'MSG1.db', 'MSG2.db']; 2 exported
+  WARNING       : only 2 of 3 message shards were exported, so this history is PARTIAL - ...
+Answer   : 你今天中午吃的是**拌粉**（外卖）[来源 0]
+Evidence : weflow-session-0003 · 2026-09-17 11:26 - 13:02 · 4 messages
+Groundedness: 2 citation(s) | no silence claims | no attribution flags
+```
+
+The answer and its evidence come from a message that lives in the **second** shard, which the previous
+single-shard design could not see.
+
+**Product = Eval path: unchanged.** The single-file path is untouched — `tests/test_text_path_unchanged.py`
+still reproduces **720/720** recorded A12 sources exactly, and `tests/test_product_parity.py` still
+passes. The multi-shard path is additive: it is taken only when `--corpus` is a directory.
+
+**Tests:** 252 pass (was 231; +21). All Python files UTF-8.
+
+## What the real shard directory showed
+
+The real `Msg/Multi` contains **three families** of sharded databases, not one:
+
+| family | files |
+| ------ | ----- |
+| messages | `MSG0.db` (188 MB), `MSG1.db` (251 MB), `MSG2.db` (220 MB) |
+| full-text index | `FTSMSG0.db`, `FTSMSG1.db`, `FTSMSG2.db` |
+| media | `MediaMSG0.db`, `MediaMSG1.db`, `MediaMSG2.db` |
+
+`MSG1.db` is the **largest** message shard, so exporting only `MSG0` (the exporter's default) discards
+the biggest single piece of history. File mtimes are `MSG0` 2026-06-26, `MSG1` 2026-09-06, `MSG2`
+2026-09-17 — ordered here, but treated as a coincidence and never used as logic.
+
+**A new completeness risk, flagged not fixed:** `MSG2.db-wal` is **8.2 MB** (`MediaMSG2.db-wal`
+1.8 MB, `FTSMSG2.db-wal` 4.2 MB). The exporter decrypts `MSG2.db` alone
+(`sqlcipherCore.decryptToTemp`), so recent writes still sitting in the write-ahead log may not be
+visible to an export even from the newest shard. This is worth verifying against a known recent
+message before trusting recency, and it is the kind of gap this phase exists to surface.
+
+## Next phase (not started)
+
+**18C — citation evidence consistency.** Entirely offline and independent of the shard work: a
+mechanical check that a cited sentence is actually supported by the chunk it cites, reported as a
+groundedness warning (no gold, no LLM judge), with the real `拌粉` mis-binding case as a synthetic
+regression fixture. Stopping here for review as instructed.

@@ -58,6 +58,35 @@ Two properties matter for correctness:
 Messages are re-sorted chronologically before session building, because sessions are cut from sequence
 order: an out-of-order export would otherwise fragment into one chunk per message.
 
+### More than one shard (WeChat 3.x)
+
+WeChat 3.x splits one conversation across `Msg/Multi/MSG0.db`, `MSG1.db`, `MSG2.db`, … The exporter
+reads **one shard per run**, so whichever shard is configured *is* the visible history — point it at
+`MSG0` and everything in `MSG2` is invisible. Export each shard and point the engine at the directory
+to merge them:
+
+```bash
+python recall.py "我今天中午吃了什么？" --corpus shards/ --shard-dir "C:\...\Msg\Multi"
+```
+
+Shards are merged **before** session building, so one conversation spanning two databases stays one
+retrieval unit with the global latest timestamp. Ordering comes from `createTime` — never from the
+file name or its modification time — and ties break deterministically by shard label and position.
+Messages are deduplicated only on the exporter's `serverId`, which survives a message appearing in two
+shards; without a `serverId` there is no safe cross-shard identity (`localId` repeats by design), so
+those messages are all kept and counted in the report rather than guessed at.
+
+`--shard-dir` is optional and read-only. When given, the report compares the `MSG*.db` files that
+**exist** against the number actually exported, and says so loudly when the history is partial:
+
+```
+  shard check   : 3 MSG*.db present ['MSG0.db', 'MSG1.db', 'MSG2.db']; 2 exported
+  WARNING       : only 2 of 3 message shards were exported, so this history is PARTIAL - ...
+```
+
+That warning exists because **No Data Loaded ≠ No Memory Exists**: a smaller history must never be
+mistaken for a smaller past.
+
 ## 2. Ask a question
 
 ```bash

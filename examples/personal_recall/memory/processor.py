@@ -1,4 +1,4 @@
-"""Retrieval-unit processor: a chat export becomes one Document per session.
+﻿"""Retrieval-unit processor: a chat export becomes one Document per session.
 
 Registered for ``.txt`` instead of ``SimpleTxtProcessor`` to swap the *retrieval
 unit* (fixed-character slice -> conversation session) while keeping everything
@@ -27,7 +27,7 @@ from .sessions import MemoryChunk, SessionConfig, build_sessions
 from .weflow import parse_weflow_events
 
 
-def _session_documents(
+def session_documents(
     sessions: list[MemoryChunk],
     skipped_source_lines: int,
 ) -> list[Document]:
@@ -89,7 +89,7 @@ class ConversationSessionProcessor(ProcessorBase[str]):
             config=self.session_config,
             conversation_id=self.conversation_id,
         )
-        documents = _session_documents(sessions, parsed.skipped_lines)
+        documents = session_documents(sessions, parsed.skipped_lines)
 
         return ProcessedDocument(
             chunks=documents,
@@ -138,7 +138,7 @@ class WeFlowSessionProcessor(ConversationSessionProcessor):
             config=self.session_config,
             conversation_id=conversation_id,
         )
-        documents = _session_documents(sessions, parsed.skipped)
+        documents = session_documents(sessions, parsed.skipped)
 
         return ProcessedDocument(
             chunks=documents,
