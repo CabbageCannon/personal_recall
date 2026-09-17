@@ -26,6 +26,7 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | 11    | **Evidence ablation: the false-memory eval**                   | ⚠️ **criterion FAILED** — 2/34 fabricated under ablation, both **cross-speaker attribution**; grounded 32/34 |
 | 12    | **Speaker-attribution clause (R10 fix)**                       | ✅ done — **A12 adopted**: ablated fabrications 2→**0**, corpus-v2 PASS held at 31/36, latency −2.4 s |
 | 13    | **Attribution screen (R11 guard) + retrieval frontier closed** | ✅ done — pool sweep closes the reach lever; screen flags **exactly** `s020`/`s032` on the defect arm, 0 on every clean arm, at a measured 25%% flag precision |
+| 14    | **Groundedness in the product surface**                        | ✅ done — gold-free caveats in `recall.py`; attribution signal is an **alarm** (0–1/arm), silence claims a **reminder** (~30%%/arm); product now ships A12 |
 | 8     | Persistence (PostgreSQL + pgvector)                            | ⏸                                                                                                                           |
 | 9     | Product UI                                                     | ⏸                                                                                                                           |
 | 10    | Multimodal recall                                              | ⏸                                                                                                                           |
@@ -1758,3 +1759,93 @@ a user: `recall.py` prints evidence cards but not whether an answer over-claims 
 someone else's situation. Wiring these signals into the product surface — so a recalled answer carries
 its own groundedness caveats — is the natural next phase and is directly aligned with the project's
 "no evidence, no memory claim" promise.
+
+---
+
+# Phase 14 — groundedness in the product surface: caveats a user can act on, with measured base rates
+
+## The design constraint that shapes everything
+
+Every instrument so far was built for the **evaluation**, where the gold evidence lines are known.
+A user asking a real question has no gold. That rules out the strongest signals — the absence screen's
+`risk` flag is defined as "absence claimed AND gold missed that still exists in the record", which is
+unknowable in production.
+
+So `groundedness.py` reports only what survives without gold:
+
+| signal | needs gold? | what it can say |
+| ------ | ----------- | --------------- |
+| citation integrity | no | how many citations, whether any index is out of range |
+| record-silence claims | no (to *surface*) | this answer asserts the record does NOT contain something |
+| attribution flags | **no** | a claim rests on a line where somebody else describes their own situation |
+
+It reports **caveats, not verdicts**, and a test enforces that: the warning text may not contain
+"wrong", "incorrect", "false" or "fabricated", because without gold the tool cannot know.
+
+## Wired into `recall.py` — and the product now ships A12
+
+`recall.py` prints the panel after the evidence cards and includes it under `--json` as
+`groundedness`. Verified end-to-end on a real question:
+
+```
+Groundedness: 1 citation(s) | no silence claims | no attribution flags
+```
+
+While wiring it I found the surface was still shipping **A11's** prompt: `--answer-prompt` defaulted
+to `cited-narrow`. Corrected to `cited-attributed`, so `recall.py` now defaults to the adopted
+reference on both axes (`k=20`, attribution clause) — the same kind of drift Phase 9 fixed for
+`DEFAULT_K`.
+
+## Does the panel actually fire where it should? Measured across all six arms
+
+This is the acceptance test: the signal must light up on the arms with known defects and stay quiet on
+the clean ones.
+
+| arm | attribution flags | answers with a silence claim | uncited answers |
+| --- | ----------------- | ---------------------------- | --------------- |
+| v1 A10 | — | 11 | 0 |
+| v2 A10 | `s026` | 12 | 0 |
+| v2 A11 | `s026` | 11 | 0 |
+| **v2 A12** (adopted) | **—** | 11 | 0 |
+| **ablated A11** (the 2 known fabrications) | **`s020`, `s032`** ✓ | 28 | 4 |
+| **ablated A12** (adopted) | **—** | 28 | 3 |
+
+The attribution signal behaves as an **alarm**: zero flags on both adopted arms, and on the one arm
+that provably contains fabrications it names exactly those two queries.
+
+## The two signals have very different base rates, and that changes how they should be read
+
+* **Attribution flags: low base rate (0–1 queries per arm).** A flag is worth stopping on.
+* **Silence claims: high base rate — 11–12 of 36 answers (≈30 %) in normal operation, 28 of 36 under
+  ablation.** An answer that says "the record never mentions X" is extremely common and usually
+  correct. The panel therefore functions as a *reminder* ("check whether the record really is silent"),
+  not an alarm — and the module docstring says so rather than implying a strong signal.
+
+That asymmetry is the honest headline of this phase: **one of the three instruments transfers to the
+product as an alarm, one transfers as a reminder, and the strongest of them (the absence `risk` flag)
+does not transfer at all** because it is defined in terms of gold.
+
+## Decision: ship the panel; keep the evaluation instruments as the gate
+
+The caveats are advisory by construction and cannot be wrong in a way that costs the user anything —
+the worst case is a reader checking a true statement. Nothing here gates an answer.
+
+## Honest caveats
+
+* The panel's absence caveat is **much weaker than the evaluation's**: the eval can say "absence claimed
+  over incomplete retrieval" (measured at 40–60 % precision after adjudication); the product can only
+  say "this answer claims silence". Presenting them as the same thing would be misleading.
+* The attribution flag inherits every limitation recorded in Phase 13 — lexical matching, a 4-flag
+  precision sample, recall known against only two defects.
+* The smoke test was a single real question; the panel's rendering under a *flagged* answer was
+  verified offline against the stored arms, not in a live flagged run.
+
+## Next step
+
+The evaluation and the product now agree on what "grounded" means, which makes the remaining
+retrieval residual (`s013 s021 s029 s030 s032`) the only substantial open item — and it is a
+*coverage* problem with a fully characterised solution space that has already returned one win (k=20)
+and five measured negatives. Worth one more attempt only if a genuinely new mechanism appears; the
+higher-value work is now making the engine usable end-to-end on a real corpus (`recall.py` runs on a
+36-query synthetic stress corpus, not on the user's own chat export), which is what "core version
+complete" should mean for this project.

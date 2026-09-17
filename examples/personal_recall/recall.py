@@ -39,6 +39,7 @@ from quivr_core.rag.entities.config import (
 )
 
 from evidence_cards import build_evidence_cards, cards_to_dict, render_cards
+from groundedness import assess
 from memory import SessionConfig
 from memory.processor import ConversationSessionProcessor
 from run_baseline import register_answer_prompt, serialize_sources
@@ -58,6 +59,27 @@ DEFAULT_CORPUS = DATA_DIR / "stress_chats.txt"
 DEFAULT_K = 20
 DEFAULT_HYBRID_POOL = 30
 DEFAULT_MAX_SESSION_CHARS = 900
+
+
+def render_groundedness(report) -> str:
+    """Render the gold-free caveats. Called only in human-readable mode.
+
+    Deliberately phrased as caveats, not verdicts: without the gold evidence lines the tool cannot
+    know whether an answer is wrong, only whether it makes statements worth checking.
+    """
+    lines = [f"Groundedness: {report.summary_line()}"]
+    warnings = report.warnings()
+    if warnings:
+        lines.append("")
+        for warning in warnings:
+            lines.append(f"  ! {warning}")
+    for flag in report.attribution_flags:
+        lines.append("")
+        lines.append(f"  attribution: {flag['sentence'][:110]}")
+        lines.append(
+            f"    rests on {flag['matched_line_speaker']}: {flag['matched_line'][:100]}"
+        )
+    return "\n".join(lines)
 
 
 def build_brain(corpus: Path, llm_config: LLMEndpointConfig) -> Brain:
@@ -94,8 +116,10 @@ def main() -> int:
     )
     parser.add_argument(
         "--answer-prompt",
-        choices=("cited-narrow", "cited", "timeline", "default"),
-        default="cited-narrow",
+        choices=("cited-attributed", "cited-narrow", "cited", "timeline", "default"),
+        # A12 is the adopted product reference: the A11 prompt plus the speaker-attribution
+        # clause that removed the cross-speaker fabrications (PROJECT_STATUS.md, Phase 12).
+        default="cited-attributed",
     )
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--max-output-tokens", type=int, default=8192)
@@ -146,6 +170,7 @@ def main() -> int:
     serialized = serialize_sources(sources)
     answer = response.answer or ""
     cards = build_evidence_cards(answer, serialized, include_uncited=args.show_uncited)
+    groundedness = assess(answer, serialized)
 
     if args.json:
         print(
@@ -154,6 +179,7 @@ def main() -> int:
                     "question": args.question,
                     "answer": answer,
                     "evidence": cards_to_dict(cards),
+                    "groundedness": groundedness.as_dict(),
                     "retrieved": len(serialized),
                     "config": {
                         "k": args.k,
@@ -172,6 +198,8 @@ def main() -> int:
     print(answer)
     print()
     print(render_cards(cards))
+    print()
+    print(render_groundedness(groundedness))
     return 0
 
 
