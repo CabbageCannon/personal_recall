@@ -102,10 +102,20 @@ def load_queries(path: Path | None = None) -> dict[str, dict]:
     return {q["id"]: q for q in payload}
 
 
-def screen(results_path: Path, queries_path: Path | None = None) -> dict:
-    """Screen one arm's results for absence claims made over incomplete retrieval."""
+def screen(results_path: Path, queries_path: Path | None = None, corpus_path: Path | None = None) -> dict:
+    """Screen one arm's results for absence claims made over incomplete retrieval.
+
+    ``corpus_path`` matters. A false absence is only possible if the thing declared absent is
+    actually *in the record* — so without the corpus the screen can only see "gold was missed",
+    which over-flags by construction (on an evidence-ablated corpus the gold is genuinely gone
+    and every absence claim is correct). Pass the corpus used by the run to have the screen
+    confirm the missed gold is really still in the record.
+    """
     rows = json.loads(results_path.read_text(encoding="utf-8"))
     queries = load_queries(queries_path)
+    corpus_text = None
+    if corpus_path is not None:
+        corpus_text = corpus_path.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\r", "\n")
 
     per_query = []
     for row in rows:
@@ -117,6 +127,12 @@ def screen(results_path: Path, queries_path: Path | None = None) -> dict:
         gold = query.get("relevant_evidence") or []
         retrieved = [s.get("content") or "" for s in row.get("retrieved_sources") or []]
         missing_gold = [line for line in gold if not any(line in c for c in retrieved)]
+        # The precondition for a false absence: the missing line is still in the record.
+        present_in_corpus = (
+            [line for line in missing_gold if line in corpus_text]
+            if corpus_text is not None
+            else list(missing_gold)
+        )
 
         per_query.append(
             {
@@ -126,14 +142,18 @@ def screen(results_path: Path, queries_path: Path | None = None) -> dict:
                 "claims": [c.sentence for c in claims],
                 "evidence_coverage": row.get("evidence_coverage"),
                 "missing_gold_lines": missing_gold,
-                # The screen: absence asserted AND the retrieval missed gold that does exist.
-                "risk": bool(claims) and bool(missing_gold),
+                "missing_gold_present_in_corpus": present_in_corpus,
+                # The screen: absence asserted AND the retrieval missed gold that the record
+                # still contains.
+                "risk": bool(claims) and bool(present_in_corpus),
             }
         )
 
     with_claims = [r for r in per_query if r["n_claims"]]
     return {
         "results": str(results_path),
+        "corpus": str(corpus_path) if corpus_path else None,
+        "corpus_checked": corpus_text is not None,
         "queries": len(per_query),
         "answers_with_absence_claim": len(with_claims),
         "total_claims": sum(r["n_claims"] for r in per_query),
@@ -146,16 +166,23 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--results", type=Path, required=True)
     ap.add_argument("--queries", type=Path)
+    ap.add_argument(
+        "--corpus",
+        type=Path,
+        help="the corpus the run used; confirms the missed gold is really still in the record "
+        "(strongly recommended — without it the screen over-flags on ablated corpora)",
+    )
     ap.add_argument("--json-out", type=Path)
     ap.add_argument("--verbose", action="store_true", help="print every claim sentence")
     args = ap.parse_args()
 
-    report = screen(args.results, args.queries)
+    report = screen(args.results, args.queries, args.corpus)
 
     print(f"results: {Path(report['results']).name}")
+    print(f"corpus checked against: {Path(report['corpus']).name if report['corpus'] else 'NO (risk is an upper bound)'}")
     print(f"answers with an absence claim : {report['answers_with_absence_claim']}/{report['queries']}")
     print(f"total absence claims          : {report['total_claims']}")
-    print(f"risk candidates (claim + missed gold that exists in the corpus): "
+    print(f"risk candidates (claim + missed gold still in the corpus): "
           f"{len(report['risk_candidates'])}  {report['risk_candidates']}")
 
     if args.verbose:

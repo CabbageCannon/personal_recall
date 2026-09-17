@@ -32,6 +32,13 @@ DATASET_CONFIG = {
         "summary": BASE_DIR / "stress_v2_summary.json",
         "labels": BASE_DIR / "stress_v2_manual_labels.json",
     },
+    # Evidence-ablation false-memory eval — see run_baseline.py's dataset config.
+    "stress_v2_nogold": {
+        "queries": DATA_DIR / "stress_queries.json",
+        "results": BASE_DIR / "stress_v2_nogold_results.json",
+        "summary": BASE_DIR / "stress_v2_nogold_summary.json",
+        "labels": BASE_DIR / "stress_v2_nogold_manual_labels.json",
+    },
 }
 
 DEFAULT_DATASET = "small"

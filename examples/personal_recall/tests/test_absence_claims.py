@@ -78,3 +78,82 @@ def test_claim_carries_its_sentence_for_adjudication() -> None:
     claim = detect_absence_claims(POSITIVES[4])[0]
     assert "2024 年 10 月" in claim.sentence
     assert claim.matched
+
+
+def _screen_fixture(tmp_path, corpus_text: str):
+    """One query whose gold line was NOT retrieved, screened against a given corpus.
+
+    Uses a workspace-local scratch dir rather than pytest's `tmp_path`, which cannot be
+    created in this environment (PermissionError on the system temp dir).
+    """
+    import json
+    import shutil
+
+    from absence_claims import screen
+
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    try:
+        gold = "[2024-10-20 15:14] 小王: 可以啊，你们组第几个上去讲的"
+        queries = tmp_path / "q.json"
+        queries.write_text(
+            json.dumps(
+                [
+                    {
+                        "id": "s001",
+                        "category": "exact_fact",
+                        "answerable": True,
+                        "question": "第几个上去讲的？",
+                        "relevant_evidence": [gold],
+                    }
+                ],
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        results = tmp_path / "r.json"
+        results.write_text(
+            json.dumps(
+                [
+                    {
+                        "query_id": "s001",
+                        "answer": "记录中没有出现答辩顺序的信息。",
+                        "evidence_coverage": 0.0,
+                        "retrieved_sources": [
+                            {"rank": 1, "content": "[2025-01-01 08:00] 我: 无关内容"}
+                        ],
+                    }
+                ],
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        corpus = tmp_path / "c.txt"
+        corpus.write_text(corpus_text, encoding="utf-8")
+        return screen(results, queries, corpus)
+    finally:
+        shutil.rmtree(tmp_path, ignore_errors=True)
+        try:  # drop the shared parent too, so the test tree is left clean
+            tmp_path.parent.rmdir()
+        except OSError:
+            pass
+
+
+SCRATCH = BASE_DIR / "tests" / "_scratch_absence"
+
+
+def test_risk_requires_the_missing_gold_to_still_be_in_the_corpus() -> None:
+    """The defect is only possible if the record still contains it."""
+    gold = "[2024-10-20 15:14] 小王: 可以啊，你们组第几个上去讲的"
+    with_gold = _screen_fixture(SCRATCH / "a", f"[2024-10-20 15:10] 我: 完事了\n{gold}\n")
+    assert with_gold["risk_candidates"] == ["s001"]
+
+    without_gold = _screen_fixture(SCRATCH / "b", "[2024-10-20 15:10] 我: 完事了\n")
+    assert without_gold["risk_candidates"] == [], (
+        "an ablated corpus must not be flagged: the absence claim is CORRECT there"
+    )
+
+
+def test_corpus_check_is_recorded() -> None:
+    report = _screen_fixture(SCRATCH / "c", "irrelevant")
+    assert report["corpus_checked"] is True
+    assert report["corpus"] is not None

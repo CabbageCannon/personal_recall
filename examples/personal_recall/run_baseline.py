@@ -65,6 +65,15 @@ DATASET_CONFIG = {
         "queries": DATA_DIR / "stress_queries.json",
         "results": BASE_DIR / "stress_v2_results.json",
     },
+    # Evidence-ablation FALSE-MEMORY eval. Every episode carrying gold evidence is removed
+    # (`build_ablation_corpus.py`), so all 34 answerable questions have no supporting line
+    # left in the record — while the same-topic distractor pack remains fully intact. The
+    # measured question is whether the system abstains or pattern-completes.
+    "stress_v2_nogold": {
+        "corpus": DATA_DIR / "stress_chats_v2_no_gold.txt",
+        "queries": DATA_DIR / "stress_queries.json",
+        "results": BASE_DIR / "stress_v2_nogold_results.json",
+    },
 }
 
 DEFAULT_DATASET = "small"
