@@ -197,6 +197,32 @@ Commitment rules (these take priority over the citation rules when they seem to 
 """
 
 
+#: Appended on top of the narrow commitment clause by `--answer-prompt cited-attributed`.
+#:
+#: Measured problem it targets (R10, Phase 11). With the user's own evidence removed, the system
+#: twice reported a statement someone else made about *their own* situation as the user's:
+#: `s020` turned 张三's own course-project database history into "the user's earliest choice", and
+#: `s032` turned 同学A's line about 同学A's own PC (plus the user's advice to 同学A) into a confident
+#: "yes, it is the same storage". Citations stayed valid in both, because the sentence really is in
+#: the context and really is quoted correctly — the *attribution* is what is wrong.
+#:
+#: Deliberately narrow. It constrains only who a line is evidence about, and it does NOT weaken the
+#: commitment licence above; A9 showed that a clause which pushes the model to commit buys PASS at
+#: the cost of groundedness, so this clause only ever removes a licence to attribute wrongly.
+ATTRIBUTION_PROMPT_ADDENDUM = """
+Speaker rules (apply to every statement you make about me):
+- Each retrieved line was written by one speaker. Before treating a line as evidence about me,
+  check WHO said it and WHO it is about.
+- A line in which someone else describes THEIR OWN situation - their project, machine, database,
+  plan, coursework or history - is NOT evidence about me. Never report it as something I did, used,
+  owned, chose or experienced.
+- Statements about me must rest on what I said, or on what someone said TO me or ABOUT me.
+- If the only same-topic lines in the context are other people describing their own situation, then
+  the record does not show the answer: say that the records do not show it. Do not answer from
+  someone else's situation.
+"""
+
+
 def _rebuild_answer_prompt(base: object, extra: str) -> object:
     """Copy ``base``'s messages verbatim and append ``extra`` to the final human message."""
     from langchain_core.prompts import (
@@ -250,6 +276,17 @@ def build_cited_narrow_answer_prompt(base: object) -> object:
     )
 
 
+def build_cited_attributed_answer_prompt(base: object) -> object:
+    """The narrow clause plus speaker attribution: another person's own situation is not my record."""
+    return _rebuild_answer_prompt(
+        base,
+        TIMELINE_PROMPT_ADDENDUM
+        + CITATION_PROMPT_ADDENDUM
+        + NARROW_COMMITMENT_PROMPT_ADDENDUM
+        + ATTRIBUTION_PROMPT_ADDENDUM,
+    )
+
+
 def register_timeline_answer_prompt() -> None:
     """Install the augmented answer prompt through the framework's registration API.
 
@@ -294,6 +331,17 @@ def register_cited_narrow_answer_prompt() -> None:
     )
 
 
+def register_cited_attributed_answer_prompt() -> None:
+    """Install the narrow clause plus the speaker-attribution rules (targets R10)."""
+    register_prompt(
+        TemplatePromptName.RAG_ANSWER_PROMPT,
+        build_cited_attributed_answer_prompt(
+            custom_prompts[TemplatePromptName.RAG_ANSWER_PROMPT]
+        ),
+        override=True,
+    )
+
+
 def build_workflow_config(variant: str) -> WorkflowConfig:
     """Return the workflow for a variant: the stock graph, or one without the LLM rewrite.
 
@@ -322,6 +370,8 @@ def register_answer_prompt(variant: str) -> None:
         register_cited_committed_answer_prompt()
     elif variant == "cited-narrow":
         register_cited_narrow_answer_prompt()
+    elif variant == "cited-attributed":
+        register_cited_attributed_answer_prompt()
     elif variant != "default":
         raise ValueError(f"unknown answer prompt variant: {variant}")
 
@@ -526,14 +576,16 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--answer-prompt",
-        choices=("default", "timeline", "cited", "cited-committed", "cited-narrow"),
+        choices=("default", "timeline", "cited", "cited-committed", "cited-narrow", "cited-attributed"),
         default="default",
         help=(
             "Answer prompt variant (default: %(default)s). 'timeline' appends explicit "
             "time-line reasoning rules targeting over-abstention and evidence misreading; "
             "'cited' adds mandatory [来源 N] citations; 'cited-committed' adds the "
             "commitment clause (cite, don't hedge); 'cited-narrow' restricts that clause to "
-            "identity/equivalence conclusions and forbids inventing temporal structure."
+            "identity/equivalence conclusions and forbids inventing temporal structure; "
+            "'cited-attributed' adds the speaker-attribution rules that stop another person's own "
+            "situation being reported as the user's (targets R10)."
         ),
     )
     parser.add_argument(

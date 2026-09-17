@@ -13,14 +13,17 @@ from quivr_core.rag.prompts import (
 )
 
 from run_baseline import (
+    ATTRIBUTION_PROMPT_ADDENDUM,
     CITATION_PROMPT_ADDENDUM,
     COMMITMENT_PROMPT_ADDENDUM,
     NARROW_COMMITMENT_PROMPT_ADDENDUM,
     TIMELINE_PROMPT_ADDENDUM,
     build_cited_answer_prompt,
+    build_cited_attributed_answer_prompt,
     build_cited_committed_answer_prompt,
     build_cited_narrow_answer_prompt,
     build_timeline_answer_prompt,
+    register_answer_prompt,
 )
 
 
@@ -115,3 +118,37 @@ def test_narrow_variant_forbids_invented_temporal_structure() -> None:
     assert "do NOT assert that" in narrow and "stopped" in narrow and "resumed" in narrow
     assert "SAME person" in narrow
     assert narrow != committed
+
+
+def test_attributed_variant_is_the_narrow_prompt_plus_speaker_rules() -> None:
+    stock = custom_prompts[TemplatePromptName.RAG_ANSWER_PROMPT]
+
+    narrow = build_cited_narrow_answer_prompt(stock).messages[3].prompt.template
+    attributed = build_cited_attributed_answer_prompt(stock).messages[3].prompt.template
+
+    assert ATTRIBUTION_PROMPT_ADDENDUM in attributed
+    # it is strictly additive: the narrow clause is retained, not replaced
+    assert attributed == narrow + ATTRIBUTION_PROMPT_ADDENDUM
+    assert NARROW_COMMITMENT_PROMPT_ADDENDUM in attributed
+    assert CITATION_PROMPT_ADDENDUM in attributed and TIMELINE_PROMPT_ADDENDUM in attributed
+    assert ATTRIBUTION_PROMPT_ADDENDUM not in narrow, "must not leak into the adopted reference"
+
+
+def test_attribution_clause_targets_attribution_only() -> None:
+    """It must constrain who a line is evidence about, without weakening the commitment licence."""
+    clause = ATTRIBUTION_PROMPT_ADDENDUM
+    assert "THEIR OWN situation" in clause
+    assert "NOT evidence about me" in clause
+    # the escape hatch for the R10 case: only others' own-situation lines -> decline
+    assert "do not show it" in clause
+    # and it must not re-introduce hedging on identity, which A9/A10 fixed
+    assert "SAME person" not in clause
+
+
+def test_register_answer_prompt_dispatches_every_advertised_variant(restore_registry) -> None:
+    """Every value the CLI advertises must actually register without raising."""
+    for variant in ("default", "timeline", "cited", "cited-committed", "cited-narrow", "cited-attributed"):
+        register_answer_prompt(variant)
+    assert "Speaker rules" in custom_prompts[
+        TemplatePromptName.RAG_ANSWER_PROMPT
+    ].messages[3].prompt.template

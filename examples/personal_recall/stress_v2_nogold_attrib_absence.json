@@ -1,0 +1,587 @@
+{
+  "results": "stress_v2_nogold_attrib_results.json",
+  "corpus": "data\\stress_chats_v2_no_gold.txt",
+  "corpus_checked": true,
+  "queries": 36,
+  "answers_with_absence_claim": 28,
+  "total_claims": 40,
+  "risk_candidates": [],
+  "per_query": [
+    {
+      "query_id": "s001",
+      "category": "exact_fact",
+      "n_claims": 1,
+      "claims": [
+        "现有记录只提到你在 2026-06-18 刚结束答辩，并和室友聊到老师提问的情况 [来源 0]，但没有任何记录说明你们组是第几个上去讲的。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2024-10-20 15:14] 小王: 可以啊，你们组第几个上去讲的",
+        "[2024-10-20 15:18] 我: 第三个，前面两组都超时了，我们讲得比较快"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s002",
+      "category": "exact_fact",
+      "n_claims": 2,
+      "claims": [
+        "提供的记录中没有出现“页面置换”或具体页面置换算法的内容；只提到操作系统课程换了老师、作业比以前多、期末还要做课设 [来源 1]。",
+        "因此，无法从给定上下文判断你复习操作系统时页面置换那一块一共过了哪几个算法。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2025-12-02 21:15] 张三: 操作系统你复习到哪了",
+        "[2025-12-02 21:18] 我: 页面置换这块，FIFO、LRU、Clock 三个我都过了一遍"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s003",
+      "category": "cross_message",
+      "n_claims": 1,
+      "claims": [
+        "记录里没有显示“之前约的那两家面试”的最后结果。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2026-06-24 21:36] 我: 有两家约了面试，都是 AI 应用方向的",
+        "[2026-07-05 20:13] 我: 一家挂了，另一家说让等二面通知"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s004",
+      "category": "exact_keyword",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2026-01-19 22:11] 我: 我月初就开始折腾自建的了，装起来不难，难的是后面一直要管",
+        "[2026-01-19 22:18] 我: 自己搭了个 SearXNG，试了两周，维护太麻烦"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s005",
+      "category": "exact_keyword",
+      "n_claims": 2,
+      "claims": [
+        "提供的对话记录中没有提到编译原理实验的词法分析，也没有提到任何用于生成扫描器的工具（如 lex/flex、ANTLR 等）。",
+        "关于你打算用哪套工具来生成扫描器，记录中没有相关内容，无法据此回答。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2025-04-20 15:24] 我: 刚开始，老师让先做词法分析那一部分",
+        "[2025-04-20 15:34] 我: 我打算用 Flex 那套，先写规则文件，让它生成扫描器"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s006",
+      "category": "semantic_recall",
+      "n_claims": 1,
+      "claims": [
+        "记录没有写明最早那个托管的具体名字。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2024-09-08 16:20] 我: 前端我先试了 Vercel，国内访问不太稳，算了",
+        "[2024-09-08 16:29] 我: 我同学打开直接白屏，等了半天也没出来"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s007",
+      "category": "semantic_recall",
+      "n_claims": 1,
+      "claims": [
+        "记录中没有显示实际投递日期。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2026-03-18 20:51] 学长: 对，四月开始就可以陆续投了，别等到五月",
+        "[2026-04-20 22:35] 我: 这周投几家试试，先投不那么想去的练练手",
+        "[2026-05-10 23:17] 我: 我投出去快两周了，只收到一封自动回复的邮件",
+        "[2026-05-17 15:57] 我: 是我拖了，中间简历改了好几版，一直不满意"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s008",
+      "category": "semantic_recall",
+      "n_claims": 1,
+      "claims": [
+        "因此，提供的上下文没有显示这个信息。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2025-11-08 19:40] 小汪: 我最近在弄毕设，数据库就用学校给的 MySQL",
+        "[2026-04-28 20:41] 小汪: 学校给的一套模板，数据库也是学院统一配的 MySQL"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s009",
+      "category": "person_recall",
+      "n_claims": 1,
+      "claims": [
+        "记录里没有“2026 年 3 月学长帮我看简历”的那次对话，因此无法按这个日期回答“学长当时说每个项目应该怎么写”。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2026-03-10 19:52] 学长: 看完了，最主要的问题是项目写得像课程作业，看不出你做了什么",
+        "[2026-03-10 19:57] 学长: 每个项目写清楚背景、你负责哪块、最后做出来什么结果"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s010",
+      "category": "person_recall",
+      "n_claims": 2,
+      "claims": [
+        "记录里没有写明导师让你往哪个具体方向想。",
+        "所以能确定的是：方向要你先考虑，但具体往哪边想，记录中没有说明。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2025-11-26 20:30] 导师: 选题方向你可以先往检索或者多模态那边想",
+        "[2026-02-20 15:33] 导师: 题目的事我还是那个意思，方向定了再定名",
+        "[2026-03-05 21:10] 我: 导师那边题目还没定，只说往检索方向想"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s011",
+      "category": "time_recall",
+      "n_claims": 2,
+      "claims": [
+        "我无法从给定记录中确认“一起去长沙”是哪一年的五一。",
+        "因此，记录中没有出现“长沙”这一地点，不能据此确定年份。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2024-05-02 10:22] 张三: 那你还有两天假，要不要一起去长沙",
+        "[2024-05-02 10:45] 我: 行，那就去，我下午收拾一下东西",
+        "[2025-04-02 22:25] 我: 对，去年五一去的长沙，来回票都差点没买上"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s012",
+      "category": "time_recall",
+      "n_claims": 1,
+      "claims": [
+        "记录中没有显示具体定在几点。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2026-06-01 16:20] 导师: 答辩时间定了，六月十八号上午，你准备一下",
+        "[2026-06-01 21:17] 我: 十八号上午，我这两天一直在改 PPT"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s013",
+      "category": "temporal_state_change",
+      "n_claims": 1,
+      "claims": [
+        "- “原来那个”具体是哪家，记录里没有点名。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2025-06-03 14:42] 我: 现在接的是 Tavily",
+        "[2025-10-11 21:02] 我: Brave Search 的中文结果不太行，先放一边",
+        "[2026-01-19 22:18] 我: 自己搭了个 SearXNG，试了两周，维护太麻烦",
+        "[2026-05-23 20:44] 我: 搜索还是回到 Tavily 了"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s014",
+      "category": "temporal_state_change",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2024-09-08 16:20] 我: 前端我先试了 Vercel，国内访问不太稳，算了",
+        "[2025-07-21 15:07] 我: 后端还是 Render，前端我准备改 Cloudflare Pages",
+        "[2025-08-20 21:14] 我: 国内访问还是偶尔不稳，晚上有一阵特别慢",
+        "[2026-08-20 20:15] 我: 说来话长，前端最早那家国内访问不行，后来换了个托管的，慢是慢但没再动"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s015",
+      "category": "temporal_state_change",
+      "n_claims": 1,
+      "claims": [
+        "记录没有给出更精确的秒数 [来源 5]。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2025-12-14 20:16] 我: 现在这个平台冷启动太慢，第一个请求要等十几秒",
+        "[2025-12-14 20:31] 我: 后端也从 Render 迁到 Railway 了",
+        "[2025-12-18 21:32] 我: 快多了，第一个请求不用再等，基本一秒内就回来"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s016",
+      "category": "temporal_state_change",
+      "n_claims": 1,
+      "claims": [
+        "在 **2024-12-28** 之后的上下文里，没有出现小汪健身的进一步记录，因此无法判断他后来是否实际去了健身房、是否坚持，或健身计划发生了什么变化。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2024-06-15 20:51] 小汪: 行，我最近天天泡健身房，等你考完喊你一起去",
+        "[2025-02-14 20:53] 小汪: 我前天还去健身房办了个体验，练完腿第二天走不动",
+        "[2025-06-28 20:15] 小汪: 我健身满一个月了，你猜我瘦了没有",
+        "[2026-02-14 20:12] 小汪: 健身房年卡我办了，你要不要一起"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s017",
+      "category": "plan_vs_actual",
+      "n_claims": 1,
+      "claims": [
+        "提供的聊天记录中没有小王说“元旦带你去他表姐那儿住几天”的内容，也没有你对此表示答应、拒绝或没给准话的回复。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2024-12-07 16:13] 我: 先别定，我还不知道元旦有没有课程作业",
+        "[2024-12-07 16:18] 小王: 行，那你月底前给我个准话",
+        "[2024-12-20 19:24] 我: 还没定，上周说的那事我一直没回他",
+        "[2025-01-14 23:21] 我: 嗯，小王提过，后来不是没定嘛"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s018",
+      "category": "plan_vs_actual",
+      "n_claims": 1,
+      "claims": [
+        "记录中没有提到重庆，也没有该趟行程的住宿、票务细节。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2025-09-22 20:15] 我: 国庆我准备去重庆，票还没买",
+        "[2025-09-28 22:16] 我: 还没，我在候补，前面还有几十个人",
+        "[2025-09-28 22:28] 我: 我把住宿先订了，可以免费取消的那种",
+        "[2025-10-06 21:40] 我: 重庆回来了，人真的多"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s019",
+      "category": "plan_vs_actual",
+      "n_claims": 1,
+      "claims": [
+        "因此，实际投递月份在上下文中没有显示。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2026-03-18 20:51] 学长: 对，四月开始就可以陆续投了，别等到五月",
+        "[2026-03-18 20:53] 我: 行，那我这两周先把两个主要项目整理完",
+        "[2026-04-20 22:35] 我: 这周投几家试试，先投不那么想去的练练手",
+        "[2026-05-10 23:17] 我: 我投出去快两周了，只收到一封自动回复的邮件"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s020",
+      "category": "latest_state",
+      "n_claims": 3,
+      "claims": [
+        "上下文没有写出你正式项目库的具体名称，所以不能确定“最开始是哪个库”。",
+        "但“最开始是哪个库”和“2025-06-27 具体换到了哪个库”，上下文都没有写出名称。",
+        "**冲突说明**：2026-04-15 说“一直没换” [来源 1] 与 2025-06-27 说“正式那个已经换过去了” [来源 0] 有表面冲突；记录没有说明 2026-04-15 的“原来那个”指最初那个，还是 2025 年迁移后的那个。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2024-03-16 20:13] 小王: 可以试试 Supabase",
+        "[2025-06-08 19:52] 我: Supabase 免费额度不太够，我准备把正式项目迁到 Railway 上的 PostgreSQL",
+        "[2025-06-21 21:14] 我: Railway 的 PostgreSQL 已经建好了，项目跑起来了",
+        "[2026-05-02 10:16] 我: 正式的项目都在 Railway 上，Neon 就一直没上"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s021",
+      "category": "latest_state",
+      "n_claims": 2,
+      "claims": [
+        "- **“四月室友让我也跟着弄”这件事**：上下文里没有四月的对应记录；2025-04-27 的记录是张三面试、同学A命令行客户端，与远程连实验室机器无关 [来源 17]。",
+        "- **卡在哪**：记录没有说明六月你自己上手试时卡在哪。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2026-04-06 21:36] 室友: 你要不要也搞一个，比之前那个稳，在外面手机也能连",
+        "[2026-04-06 21:38] 我: 我还是懒得折腾",
+        "[2026-06-11 22:27] 我: 抄了，握手一直不成功，日志也看不出哪里错",
+        "[2026-06-11 22:47] 我: WireGuard 我配了一晚上没配通，还是回去用 Tailscale 了"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s022",
+      "category": "latest_state",
+      "n_claims": 3,
+      "claims": [
+        "**记录里没有能说明\"现在\"锻炼状态的内容，只能看到两处相关约定，且都是计划而非实际结果：**",
+        "- 2024-12-28，小汪问\"什么时候回老家，回来一起去健身房练两天\"，我回复\"过几天回，到时候一起，别一上来就加重量\"——这只表明你当时答应了一起去，属于约定/意向，记录没有说后来是否真的去了 [来源 1]。",
+        "**结论：** 除了上述两次关于健身的对话外，所有来源中没有任何记录说明你目前的锻炼状态，也没有任何记录表明你后来是否还去健身房。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2025-11-08 20:19] 我: 早不去了，开学之后一次都没去",
+        "[2025-12-27 22:32] 我: 不去了，卡都快过期了，等开学再说",
+        "[2026-02-14 20:19] 我: 有是有，但要预约，我一般都懒得去",
+        "[2026-02-14 20:24] 我: 我最近还在跑操场，先这样吧"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s023",
+      "category": "earliest_state",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2024-03-16 20:13] 小王: 可以试试 Supabase",
+        "[2024-03-16 20:21] 我: 那我今晚注册一个，先建两张表试试",
+        "[2024-07-21 15:10] 同学A: 那你看看 Neon，也是 PostgreSQL",
+        "[2026-02-26 18:40] 我: 之前测试过连接，但没专门拿它做正式项目"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s024",
+      "category": "earliest_state",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2024-03-16 20:12] 我: 还没，后端我放 Render 了，但数据库还在看",
+        "[2024-11-25 20:19] 我: Render 上那个地址还在，能打开，就是界面比较糙",
+        "[2025-07-21 15:07] 我: 后端还是 Render，前端我准备改 Cloudflare Pages",
+        "[2025-12-14 20:31] 我: 后端也从 Render 迁到 Railway 了"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s025",
+      "category": "entity_disambiguation",
+      "n_claims": 2,
+      "claims": [
+        "提供的聊天记录中没有出现“王哥”这个称呼，也没有张三提到“王哥”的任何内容；因此无法判断“张三说的那个王哥”是否就是“弄毕设、数据库用学校 MySQL 的同学”。",
+        "记录未显示答案。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2025-01-14 23:20] 张三: 王哥前两天不是还说要去深圳吗",
+        "[2025-01-14 23:21] 我: 嗯，小王提过，后来不是没定嘛",
+        "[2024-03-16 20:13] 小王: 可以试试 Supabase",
+        "[2025-11-08 19:40] 小汪: 我最近在弄毕设，数据库就用学校给的 MySQL"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s026",
+      "category": "entity_disambiguation",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2024-09-08 16:20] 我: 前端我先试了 Vercel，国内访问不太稳，算了",
+        "[2025-03-09 22:13] 室友: 实在不行你再看看 Cloudflare Tunnel，不过那个场景不太一样",
+        "[2025-08-12 20:08] 我: Pages，这次不是内网穿透",
+        "[2025-08-12 20:13] 室友: 我说的是我家里那台 NAS，从外面连回去那种"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s027",
+      "category": "entity_disambiguation",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2024-03-16 20:13] 小王: 可以试试 Supabase",
+        "[2024-07-21 15:10] 同学A: 那你看看 Neon，也是 PostgreSQL",
+        "[2026-05-02 10:19] 小王: Neon 当年是我推荐给你的还是别人，我都忘了",
+        "[2026-05-02 10:21] 我: 不是你，是另一个同学，他当时说也是 PG 的"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s028",
+      "category": "negative_evidence",
+      "n_claims": 1,
+      "claims": [
+        "- 到 2026-04-15 的记录里，你仍说那个 2024 年同学推荐的库“一直没正式用上”，再次看了 Neon 后最后还是没换；但该记录没有明确说账号是否仍保留。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2024-08-04 21:30] 我: Neon 连上了，不过只是跑通连接，没拿它做正式项目",
+        "[2024-08-04 21:56] 我: 对，所以我就没往下做，连上就收手了",
+        "[2024-11-19 22:32] 我: 留着，账号还在，就是一直没动过",
+        "[2024-11-19 22:41] 我: Neon 免费层会休眠，冷启动要等好几秒，先不用了"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s029",
+      "category": "negative_evidence",
+      "n_claims": 1,
+      "claims": [
+        "记录里没有出现“阿伟”或明确说明“他家那台存储换成的新方案”具体是哪一套，所以不能直接把它与下面的试用画等号。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2026-04-06 21:31] 我: 阿伟说他把家里 NAS 换成 WireGuard 了",
+        "[2026-04-06 21:38] 我: 我还是懒得折腾",
+        "[2026-06-11 22:47] 我: WireGuard 我配了一晚上没配通，还是回去用 Tailscale 了",
+        "[2026-08-20 20:51] 我: 他自己换的那套组网，跟我不一样，我也没跟着动"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s030",
+      "category": "multi_evidence",
+      "n_claims": 1,
+      "claims": [
+        "- **后端**：提供的记录没有显示 2024 年 10 月到年底时该课程项目后端的状态；2024-12-31 的对话未提后端，无法从上下文确定[来源 0]。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2024-08-06 20:40] 我: 我把 Supabase 那边的连接串都挪到环境变量里了，本地和线上分开",
+        "[2024-10-20 15:10] 我: 结题答辩搞完了，老师没怎么为难我们",
+        "[2024-11-19 22:41] 我: Neon 免费层会休眠，冷启动要等好几秒，先不用了",
+        "[2024-11-25 20:19] 我: Render 上那个地址还在，能打开，就是界面比较糙"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s031",
+      "category": "multi_evidence",
+      "n_claims": 1,
+      "claims": [
+        "因此，提供的记录没有说明小汪毕业设计最后具体是怎么收尾的，也没有记录说明他的系统是否真的上线。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2025-11-08 19:40] 小汪: 我最近在弄毕设，数据库就用学校给的 MySQL",
+        "[2025-12-27 22:17] 小汪: 功能跑通了，论文一个字没写",
+        "[2026-04-28 20:47] 小汪: 反正我也不用上线，交上去能演示就行",
+        "[2026-08-28 20:51] 小汪: 对，反正也不用上线，交完就完事了"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s032",
+      "category": "implicit_reference",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2025-09-03 22:05] 我: 本地原型我就直接用 SQLite，不上云",
+        "[2026-05-02 10:26] 我: 对，只有本地写着玩的时候用过轻量的那个",
+        "[2026-08-10 21:23] 我: 本地用文件型的那个，随时能删，线上还是托管的那套"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s033",
+      "category": "implicit_reference",
+      "n_claims": 2,
+      "claims": [
+        "无法从提供的记录中确定。",
+        "到 2026 年 3 月，记录中只有导师让你组会讲一篇“感兴趣的方向”的论文，你答应找一篇短的并整理提纲，但没有记录你具体提的是哪一条方向 [来源 0]。"
+      ],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2025-11-26 20:30] 导师: 选题方向你可以先往检索或者多模态那边想",
+        "[2025-11-26 20:33] 我: 检索我比较熟，多模态我基本没碰过",
+        "[2026-01-05 20:17] 导师: 还是先往检索那边靠，多模态也可以一并看看",
+        "[2026-03-05 21:10] 我: 导师那边题目还没定，只说往检索方向想"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s034",
+      "category": "cross_time",
+      "n_claims": 0,
+      "claims": [],
+      "evidence_coverage": 0.0,
+      "missing_gold_lines": [
+        "[2024-03-16 20:13] 小王: 可以试试 Supabase",
+        "[2025-01-12 20:08] 我: 数据库我还是换回 Supabase 了",
+        "[2025-06-21 21:14] 我: Railway 的 PostgreSQL 已经建好了，项目跑起来了",
+        "[2026-05-02 10:16] 我: 正式的项目都在 Railway 上，Neon 就一直没上"
+      ],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s035",
+      "category": "unanswerable",
+      "n_claims": 1,
+      "claims": [
+        "提供的记录中**没有出现**导师最后给\"我\"定的毕设题目名称。"
+      ],
+      "evidence_coverage": null,
+      "missing_gold_lines": [],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    },
+    {
+      "query_id": "s036",
+      "category": "unanswerable",
+      "n_claims": 2,
+      "claims": [
+        "提供的记录里没有这家店的名字。",
+        "因此，无法从提供的上下文得知那家店叫什么名字。"
+      ],
+      "evidence_coverage": null,
+      "missing_gold_lines": [],
+      "missing_gold_present_in_corpus": [],
+      "risk": false
+    }
+  ]
+}

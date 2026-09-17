@@ -24,6 +24,7 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | 9     | **Budget as the lever: A11 = A10 with k=20**                   | ✅ done — **A11 adopted as product reference**: PASS 28→31 on v2, 0 unsupported, 0 citation-grounding failures, +3.6%% latency |
 | 10    | **Absence-claim validity (R9)**                                | ✅ done — metric built + adjudicated (10 TRUE / 10 FALSE); R9 is *not* window-caused; PASS-graded answers can still be wrong about the record |
 | 11    | **Evidence ablation: the false-memory eval**                   | ⚠️ **criterion FAILED** — 2/34 fabricated under ablation, both **cross-speaker attribution**; grounded 32/34 |
+| 12    | **Speaker-attribution clause (R10 fix)**                       | ✅ done — **A12 adopted**: ablated fabrications 2→**0**, corpus-v2 PASS held at 31/36, latency −2.4 s |
 | 8     | Persistence (PostgreSQL + pgvector)                            | ⏸                                                                                                                           |
 | 9     | Product UI                                                     | ⏸                                                                                                                           |
 | 10    | Multimodal recall                                              | ⏸                                                                                                                           |
@@ -201,6 +202,11 @@ axis only after Phase 1/6 work; do not over-claim it from Phase 0.5.
   `citation_metrics.py` sees nothing, because the citation is accurate and the **attribution** is
   wrong. Measured at 2/34 answerable under evidence ablation and 0/36 without it. Target of the
   pre-registered Phase 12 fix.
+- **R11 (new, Phase 12)** Attribution is **prompted, not enforced**: A12's clause fixed R10, but
+  nothing in the pipeline verifies that a cited line's speaker matches who the answer says the fact
+  is about. A future prompt or model change could reintroduce cross-speaker attribution with every
+  existing metric still green — exactly how R9 and R10 stayed invisible until they were instrumented.
+  Guard to build: an attribution check analogous to `absence_claims.py`.
 
 ---
 
@@ -1544,3 +1550,102 @@ The clause is narrow by construction — unlike A9's broad commitment clause it 
 evidence rule rather than pushing the model to commit — but it is still a prompt change, so if it
 buys ablated-groundedenness by costing PASS on the normal corpus it will be rejected exactly as A9
 was.
+
+---
+
+# Phase 12 — the speaker-attribution clause: **both criteria met, adopted as A12**
+
+## The change
+
+`--answer-prompt cited-attributed`: the A11 prompt plus a narrow speaker-attribution clause. It
+constrains only *who a line is evidence about* — a line where someone else describes their own
+project, machine, database or coursework is not evidence about the user — and it gives the model an
+explicit instruction for the R10 case (if the only same-topic lines are other people's own
+situations, say the records do not show it). It deliberately does **not** weaken the commitment
+licence, so it can only ever remove a licence to attribute wrongly.
+
+Single variable: both arms use the adopted A11 retrieval configuration, and the retrieval was
+verified to be unchanged — the corpus-v2 arm reproduced A11's retrieval **exactly, 36/36 chunk
+indices**.
+
+## Criterion 1 — ablated corpus: fabrications 2 → **0** ✓
+
+| | A11 (ablated) | **A12 (ablated)** |
+| - | ------------- | ----------------- |
+| **unsupported claims** | **2 / 36** | **0 / 36** ✓ |
+| abstained | 21 / 36 | 21 / 36 |
+| asserted an answer | 15 / 36 | 15 / 36 |
+| invalid citations | 0 | 0 |
+| citation rate | — | 91.7 % (148 citations) |
+
+The abstain/assert split is **identical** (21/15): the clause did not make the system more cagey or
+more eager overall. It changed *what two specific answers said*, which is exactly the intended
+effect and not a global behaviour shift.
+
+Mechanism-level confirmation, from the part-2 grader working independently:
+
+* **`s020`** now refuses the asked library identity in both its opening and its closing, and offers a
+  timeline only as an explicit fallback — it no longer promotes 张三's own course project to the
+  user's earliest database.
+* **`s032`** now refuses, and the grader named the fix directly: "同学A's repurposed-PC line is not
+  used as the user's storage".
+
+Both prior fabrications are gone, and the graders also recorded the clause working *pre-emptively* on
+traps that were never flagged: `s004` states that SearXNG is 学长's own build and not the user's,
+`s003` explicitly excludes 张三's interview as not the user's result, `s013` flags the SearXNG/Tavily
+lines as 学长's tool, `s022` refuses to read 小汪's state as the user's.
+
+## Criterion 2 — corpus v2: PASS must not fall below 31, groundedness and citation honesty intact ✓
+
+| | A11 | **A12** |
+| - | --- | ------- |
+| **PASS** | 31/36 (86.1 %) | **31/36 (86.1 %)** ✓ |
+| PARTIAL / FAIL | 5 / 0 | 5 / 0 |
+| **unsupported claims** | 0 | **0** ✓ |
+| citation rate / invalid | 100 % / 0 | 100 % / 0 ✓ |
+| citation coverage (gold) | 77.2 % | **79.8 %** |
+| retrieval coverage (gold) | 85.1 % | 85.1 % (identical retrieval) |
+| lexical citation precision | 60.4 % | 58.7 % |
+| abstention accuracy | 100 % | 100 % |
+| mean latency | 20.2 s | **17.8 s** |
+
+The same five PARTIALs remain (`s013`, `s021`, `s029`, `s030`, `s032`) — the clause neither fixed nor
+broke anything on the normal corpus, which is what a targeted groundedness fix should do.
+
+**Secondary improvement:** the absence-claim screen's risk candidates on corpus v2 fell from **5 to
+3** (`s021 s025 s029 s030 s032` → `s020 s021 s030`), so the clause also reduced answers that assert
+the record's silence over incomplete retrieval.
+
+## Decision: **adopt A12** (A11 + speaker-attribution rules) as the product reference
+
+A12 dominates: it removes the only measured false-memory mode in the project, at **zero cost** to
+PASS on the harder corpus, with groundedness and citation honesty unchanged or better, slightly
+better citation coverage, and *lower* latency. Unlike A9, nothing here trades away the property the
+project exists for.
+
+## Honest caveats
+
+* The clause was written **after** seeing `s020`/`s032`, so the ablated result is a fix for a known
+  failure rather than a blind test of a hypothesis. What *was* blind is the cost side: the corpus-v2
+  arm was a genuine held-out check, and the criterion ("PASS must not fall") was registered before
+  either arm ran.
+* Two 18-query graders per arm, run independently under matching rubrics and merged with validation;
+  both verified every quoted span verbatim. One grader recorded a judgment call on `s020`'s
+  abstain/assert coding and matched the sibling arm's convention so the comparison stayed like for
+  like.
+* `s013`, `s021`, `s029`, `s030`, `s032` remain open and are **retrieval-reach** problems, not
+  attribution or generation problems — Phase M3 established that no selector recovers them, and the
+  reach table shows `s021`/`s030` are outside this configuration family at any k.
+* Attribution is now *prompted*, not *enforced*. Nothing in the pipeline checks who a cited line is
+  about, so a future prompt regression could reintroduce R10 silently. A detector analogous to
+  `absence_claims.py` is the obvious guard and does not exist yet.
+
+## Next step
+
+The retrieval-reach residual (`s013 s021 s029 s030 s032`) is well understood and expensive to chase:
+`probe_decomposition`, `probe_pool_rerank` and `probe_metadata_oracle` all measured no win. The
+higher-value work now is on the **groundedness side**, where each phase has found something real:
+R9 (absence over-claims) and R10 (cross-speaker attribution) were both invisible to every metric the
+project had before they were instrumented. The natural next instrument is an **attribution check** —
+verifying that each cited line's speaker actually matches who the answer says the fact is about —
+plus wiring the existing groundedness signals into the product surface so a user can see them.

@@ -1,0 +1,254 @@
+[
+  {
+    "query_id": "s001",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  },
+  {
+    "query_id": "s002",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  },
+  {
+    "query_id": "s003",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  },
+  {
+    "query_id": "s004",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  },
+  {
+    "query_id": "s005",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  },
+  {
+    "query_id": "s006",
+    "unsupported_claim": false,
+    "abstained": false,
+    "asserted_answer": true,
+    "label": "ANSWERED"
+  },
+  {
+    "query_id": "s007",
+    "unsupported_claim": false,
+    "abstained": false,
+    "asserted_answer": true,
+    "label": "ANSWERED"
+  },
+  {
+    "query_id": "s008",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  },
+  {
+    "query_id": "s009",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  },
+  {
+    "query_id": "s010",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  },
+  {
+    "query_id": "s011",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  },
+  {
+    "query_id": "s012",
+    "unsupported_claim": false,
+    "abstained": false,
+    "asserted_answer": true,
+    "label": "ANSWERED"
+  },
+  {
+    "query_id": "s013",
+    "unsupported_claim": false,
+    "abstained": false,
+    "asserted_answer": true,
+    "label": "ANSWERED"
+  },
+  {
+    "query_id": "s014",
+    "unsupported_claim": false,
+    "abstained": false,
+    "asserted_answer": true,
+    "label": "ANSWERED"
+  },
+  {
+    "query_id": "s015",
+    "unsupported_claim": false,
+    "abstained": false,
+    "asserted_answer": true,
+    "label": "ANSWERED"
+  },
+  {
+    "query_id": "s016",
+    "unsupported_claim": false,
+    "abstained": false,
+    "asserted_answer": true,
+    "label": "ANSWERED"
+  },
+  {
+    "query_id": "s017",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  },
+  {
+    "query_id": "s018",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  },
+  {
+    "query_id": "s019",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  },
+  {
+    "query_id": "s020",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  },
+  {
+    "query_id": "s021",
+    "unsupported_claim": false,
+    "abstained": false,
+    "asserted_answer": true,
+    "label": "ANSWERED"
+  },
+  {
+    "query_id": "s022",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  },
+  {
+    "query_id": "s023",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  },
+  {
+    "query_id": "s024",
+    "unsupported_claim": false,
+    "abstained": false,
+    "asserted_answer": true,
+    "label": "ANSWERED"
+  },
+  {
+    "query_id": "s025",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  },
+  {
+    "query_id": "s026",
+    "unsupported_claim": false,
+    "abstained": false,
+    "asserted_answer": true,
+    "label": "ANSWERED"
+  },
+  {
+    "query_id": "s027",
+    "unsupported_claim": false,
+    "abstained": false,
+    "asserted_answer": true,
+    "label": "ANSWERED"
+  },
+  {
+    "query_id": "s028",
+    "unsupported_claim": false,
+    "abstained": false,
+    "asserted_answer": true,
+    "label": "ANSWERED"
+  },
+  {
+    "query_id": "s029",
+    "unsupported_claim": false,
+    "abstained": false,
+    "asserted_answer": true,
+    "label": "ANSWERED"
+  },
+  {
+    "query_id": "s030",
+    "unsupported_claim": false,
+    "abstained": false,
+    "asserted_answer": true,
+    "label": "ANSWERED"
+  },
+  {
+    "query_id": "s031",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  },
+  {
+    "query_id": "s032",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  },
+  {
+    "query_id": "s033",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  },
+  {
+    "query_id": "s034",
+    "unsupported_claim": false,
+    "abstained": false,
+    "asserted_answer": true,
+    "label": "ANSWERED"
+  },
+  {
+    "query_id": "s035",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  },
+  {
+    "query_id": "s036",
+    "unsupported_claim": false,
+    "abstained": true,
+    "asserted_answer": false,
+    "label": "ABSTAIN"
+  }
+]

@@ -1,0 +1,362 @@
+[
+  {
+    "query_id": "s001",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Answers '第三个' (third group up) and the supporting detail that the first two groups overran; identical to gold.",
+    "quoted_answer_span": "你们组是**第三个**上去讲的，前面两组都超时了，你们讲得比较快 [来源 0]。",
+    "quoted_source_span": "[2024-10-20 15:18] 我: 第三个，前面两组都超时了，我们讲得比较快"
+  },
+  {
+    "query_id": "s002",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Lists exactly the three algorithms FIFO, LRU, Clock that gold names.",
+    "quoted_answer_span": "根据记录，你在 2025-12-02 复习操作系统页面置换时，一共过了 **FIFO、LRU、Clock 三个算法** [来源 0]。",
+    "quoted_source_span": "[2025-12-02 21:18] 我: 页面置换这块，FIFO、LRU、Clock 三个我都过了一遍"
+  },
+  {
+    "query_id": "s003",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Both interview outcomes correct: one rejected, the other told him to wait for a second-round notice; the extra later 'still waiting' detail is source-backed (plus states no final offer is in the record, which is true).",
+    "quoted_answer_span": "- 2026-06-24 你提到有两家约了面试，都是 AI 应用方向 [来源 0]。 - 2026-07-05 的结果是：一家挂了；另一家说让你等二面通知 [来源 1]。 - 2026-08-10 你问过一次，对方说还在走流程，让你再等等 [来源 5]。 - 2026-08-28 你仍在等，二面那家说九月初给消息 [来源 3]。 所以，目前记录里能确定的是：一家面试已失败；另一家还没有最终结果，最近状态是等九月初消息 [来源 1][来源…",
+    "quoted_source_span": "[2026-07-05 20:13] 我: 一家挂了，另一家说让等二面通知"
+  },
+  {
+    "query_id": "s004",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Names SearXNG, matching gold exactly.",
+    "quoted_answer_span": "你年初自己搭的聚合搜索是 **SearXNG** [来源 1]。",
+    "quoted_source_span": "[2026-01-19 22:18] 我: 自己搭了个 SearXNG，试了两周，维护太麻烦"
+  },
+  {
+    "query_id": "s005",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Names Flex and the rule-file -> generated-scanner use, matching gold.",
+    "quoted_answer_span": "你打算用 **Flex** 那套：先写规则文件，让它生成扫描器。[来源 0]",
+    "quoted_source_span": "[2025-04-20 15:34] 我: 我打算用 Flex 那套，先写规则文件，让它生成扫描器"
+  },
+  {
+    "query_id": "s006",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Identifies Vercel as the earliest frontend host and gives both gold reasons (unstable access from China; classmate saw a blank page for a long time).",
+    "quoted_answer_span": "你最早给前端找的托管是 **Vercel**，在 2024-09-08 时你先试了它 [来源 6]。 后来不用，是因为**国内访问不太稳**：你当时说“国内访问不太稳，算了”，还提到同学打开直接白屏、等了半天也没出来 [来源 6]。到 2025-07-21 你回忆时也确认：“去年就试了，国内访问不太稳，后来就搁那了” [来源 7]。",
+    "quoted_source_span": "[2024-09-08 16:20] 我: 前端我先试了 Vercel，国内访问不太稳，算了"
+  },
+  {
+    "query_id": "s007",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Both halves land: the intended window is April ('四月开始就可以陆续投了，别等到五月') and the delay is his own admission '是我拖了，中间简历改了好几版，一直不满意' (plus project tidying), with the actual start around 2026-04-20.",
+    "quoted_answer_span": "按记录看，时间点前后有变化： - **2025-12-25** 我说“明年三月要投实习，现在不弄就来不及” [来源 5]。 - **2025-12-31** 我说“学长说四月就能开始投了”，并计划一月把简历定稿、二月交毕设开题 [来源 1]。 - **2026-03-18** 学长再次说“四月开始就可以陆续投了，别等到五月” [来源 4]。 所以更明确的投递节奏是：**四月开始陆续投，别拖到五月** [来源 1][来源 4]；更早我还提…",
+    "quoted_source_span": "[2026-05-17 15:57] 我: 是我拖了，中间简历改了好几版，一直不满意"
+  },
+  {
+    "query_id": "s008",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Says plainly it was not his own choice and that the DB was school/college-provided MySQL, matching gold.",
+    "quoted_answer_span": "不是他自己挑的。 - 2025-11-08，小汪说毕设“数据库就用学校给的 MySQL” [来源 0]。 - 2026-04-28，小汪又说数据库“也是学院统一配的 MySQL” [来源 1]。 所以按聊天记录，小汪毕设用的数据库是学校/学院统一提供、统一配置的 MySQL，不是他自己挑的。",
+    "quoted_source_span": "[2026-04-28 20:41] 小汪: 学校给的一套模板，数据库也是学院统一配的 MySQL"
+  },
+  {
+    "query_id": "s009",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Gives the gold formula verbatim in substance: background, which part he owned, what result came out; adds the supported 'deployment/DB details worth writing' advice.",
+    "quoted_answer_span": "2026-03-10 那次，学长说项目最主要的问题是不能写得像课程作业，看不出你做了什么 [来源 0]。 他的建议是：**每个项目写清楚背景、你负责哪块、最后做出来什么结果** [来源 0]。 另外，部署和数据库那些细节也建议写，尤其是你自己踩过坑的地方，因为面试官很爱问 [来源 0]。",
+    "quoted_source_span": "[2026-03-10 19:57] 学长: 每个项目写清楚背景、你负责哪块、最后做出来什么结果"
+  },
+  {
+    "query_id": "s010",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Answers the question (检索 or 多模态, matching gold) and states the topic was never pinned down ('具体题目等他拍板'), which matches gold's '具体题目他一直没给'.",
+    "quoted_answer_span": "导师说可以先往 **检索或多模态** 那边想 [来源 1]。后来导师又说 **先往检索那边靠，多模态也可以一并看看** [来源 0]。",
+    "quoted_source_span": "[2025-11-26 20:30] 导师: 选题方向你可以先往检索或者多模态那边想"
+  },
+  {
+    "query_id": "s011",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Answers '2024年的五一' with the corroborating '去年五一去的长沙' line, matching gold.",
+    "quoted_answer_span": "是 **2024年的五一**。 - [2024-05-02] 张三约我一起去长沙，我答应“行，那就去”，并约定次日六点半集合 [来源 1]。 - [2025-04-02] 张三提到“长沙那次”，我确认“去年五一去的长沙” [来源 0]。",
+    "quoted_source_span": "[2025-04-02 22:25] 我: 对，去年五一去的长沙，来回票都差点没买上"
+  },
+  {
+    "query_id": "s012",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Answers 2026-06-18 in the morning with the advisor's line and the same-day confirmation, matching gold.",
+    "quoted_answer_span": "你的毕业答辩定在 **2026年6月18日上午** [来源 0]。 当天聊天也显示你已经“刚讲完”答辩 [来源 1]。",
+    "quoted_source_span": "[2026-06-01 16:20] 导师: 答辩时间定了，六月十八号上午，你准备一下"
+  },
+  {
+    "query_id": "s013",
+    "label": "PARTIAL",
+    "unsupported_claim": false,
+    "evidence_sufficient": false,
+    "citation_supports_claim": true,
+    "reason": "Gold enumerates three services (Tavily -> Brave Search -> self-hosted SearXNG -> back to Tavily); the answer omits the Brave Search step entirely and gives only Tavily -> SearXNG -> Tavily, so one of the enumerated services is missing. The return reason (self-hosting too costly to maintain) and 'back to Tavily' are correct, and nothing asserted contradicts gold.",
+    "quoted_answer_span": "按记录可确认，你检索用的搜索服务换过 **Tavily → 自建 SearXNG → Tavily**： - 到 **2025-06-03**，你仍明确说“现在接的是 Tavily” [来源 7]。 - **2026-01-19** 左右，你因为原来按次计费额度/账单压力，月初开始折腾自建，自己搭了 **SearXNG** [来源 0]。 - 自建试了两周，你觉得维护太麻烦 [来源 0]。 - 到 **2026-05-23**，你把检索…",
+    "quoted_source_span": "[2026-05-23 20:44] 我: 搜索还是回到 Tavily 了"
+  },
+  {
+    "query_id": "s014",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Both halves correct: ~10 months between first trying Vercel (2024-09-08) and settling on Cloudflare Pages (2025-07-21), and explicitly 'not fully solved, only clearly improved' with the 2025-08-20 'still occasionally unstable, very slow at night' evidence.",
+    "quoted_answer_span": "## 时间间隔 - 最开始试的是 **Vercel**：[来源 4] 中 [2024-09-08 16:20] 你说“前端我先试了 Vercel，国内访问不太稳，算了”。 - 最后定下来的是 **Cloudflare Pages**：[来源 5] 中 [2025-07-21 15:07] 你提到“前端我准备改 Cloudflare Pages”，[来源 7] 中 [2025-08-12 20:08] 你确认“Pages，这次不是内网穿透…",
+    "quoted_source_span": "[2025-08-20 21:14] 我: 国内访问还是偶尔不稳，晚上有一阵特别慢"
+  },
+  {
+    "query_id": "s015",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Both numbers correct: before the move the first request waited '十几秒', after the move it came back within about one second, i.e. a gap of roughly ten-plus seconds.",
+    "quoted_answer_span": "后端搬家前后，第一个请求的等待时间大概差了 **十几秒**： - 搬家前：后端还在原平台时，第一个请求要等“十几秒” [来源 4]。 - 搬家后：迁完之后，第一个请求“不用再等，基本一秒内就回来” [来源 2]。 - 后来总结时也写成“迁移前后第一次请求的时间……大概是十几秒到一秒” [来源 6]。 所以可以概括为：从约十几秒降到约一秒内，差了大约十几秒 [来源 4][来源 2][来源 6]。",
+    "quoted_source_span": "[2025-12-18 21:32] 我: 快多了，第一个请求不用再等，基本一秒内就回来"
+  },
+  {
+    "query_id": "s016",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Walks the 2024->2026 chain (2024-06 gym daily, 2025-02 trial session, 2025-06 one month in / +2kg, 2026-02 picking a gym and buying the annual card) and explicitly notes the record does not say whether he stopped in between, matching gold's caveat; also correctly keeps the user's own 'I stopped going' lines out of 小汪's timeline.",
+    "quoted_answer_span": "小汪健身的时间线（只按提供的聊天记录）： | 时间 | 变化 | |---|---| | 2024-02-10 | 小汪提到开学前请吃饭，顺便聊聊健身的事，这是记录里最早与健身相关的话题，但没有具体训练内容。[来源 2] | | 2024-06-15 | 小汪说“我最近天天泡健身房”，并约我考完一起去。[来源 17] | | 2024-12-28 | 小汪约我回老家后一起去健身房练两天。[来源 9] | | 2025-02-14 | 小…",
+    "quoted_source_span": "[2024-06-15 20:51] 小汪: 行，我最近天天泡健身房，等你考完喊你一起去"
+  },
+  {
+    "query_id": "s017",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Reaches the gold conclusion that neither branch fits: he neither agreed nor refused ('先别定'), still had not replied by 2024-12-20, and the Shenzhen trip fell through with nothing done over New Year.",
+    "quoted_answer_span": "结论：**没有答应，到最后也没给小王准话；元旦深圳之行没有定下来，最终也没去。** - 2024-12-07 小王说他表姐在深圳，元旦可以过去住几天，一起去；你回复“先别定”，还说“我还没想好要不要跑这一趟” [来源 0]。 - 2024-12-20 你仍说“还没定”，并且“上周说的那事我一直没回他” [来源 2]。 - 2025-01-14 你提到“后来不是没定嘛”，深圳那事就搁下了 [来源 1]。 - 2025-09-22 你回忆“…",
+    "quoted_source_span": "[2024-12-20 19:24] 我: 还没定，上周说的那事我一直没回他"
+  },
+  {
+    "query_id": "s018",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Answers both halves: accommodation was booked first (free-cancellation booking on 2025-09-28 while the ticket was still unbought/on the official waitlist) and the ticket was left in the official waitlist with the paid acceleration tool dropped; notes the record never spells out how the ticket finally cleared, which is a true statement about the record and does not contradict gold.",
+    "quoted_answer_span": "- 先弄的是**住宿**。2025-09-22 你说国庆去重庆、票还没买，计划是“先定地方再抢票”[来源 0]；到 2025-09-28，你说已经“把住宿先订了，可以免费取消的那种”，同时票“还没”买到[来源 2]。 - 票最后怎么处理：**记录没有写明最终结果**。可确认的是 2025-09-28 你仍在官方候补，前面还有几十个人，且已不用加速工具[来源 2]；2025-10-06 你已说“重庆回来了”[来源 1]，但没有说明票最终是…",
+    "quoted_source_span": "[2025-09-28 22:28] 我: 我把住宿先订了，可以免费取消的那种"
+  },
+  {
+    "query_id": "s019",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Both halves answered: started applying in late April (2026-04-20 '这周投几家试试' + 2026-05-10 '投出去快两周了' back-calculated), and the comparison with 学长's 'April is fine' advice — never slipped into May, ~2-3 weeks later on an early-April reading. Matches gold's 'late April, slightly later than April'; the extra hedge about the exact day is the same inference gold makes.",
+    "quoted_answer_span": "你最后是 **2026年4月下旬（约4月底）** 才开始投的",
+    "quoted_source_span": "[2026-05-10 23:17] 我: 我投出去快两周了，只收到一封自动回复的邮件"
+  },
+  {
+    "query_id": "s020",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Gives the correct mainline Supabase -> Railway PostgreSQL and that Neon was only connection-tested, never officially used; the 'how it changed' half is documented step by step (2025-06-08 free-tier shortage, 06-15 migration plan, 06-27 done). It never names 小王 or Supabase's 2024-03 origin (that chunk was not retrieved), but the question asked 'which one first / how it was switched', which is answered correctly.",
+    "quoted_answer_span": "按现有记录，正式项目数据库主线是：**Supabase → Railway PostgreSQL**；Neon 只试过，未正式上。",
+    "quoted_source_span": "[2026-02-26 18:45] 我: 后来从 Supabase 迁走那个，一直用到现在"
+  },
+  {
+    "query_id": "s021",
+    "label": "PARTIAL",
+    "unsupported_claim": false,
+    "evidence_sufficient": false,
+    "citation_supports_claim": true,
+    "reason": "June half complete and correct (copied the roommate's config, handshake kept failing, logs unhelpful, port opened plus two more tried, 'WireGuard 我配了一晚上没配通，还是回去用 Tailscale 了'), but the April half is declined as '记录里没有直接留下你当时怎么回复室友' — the 2026-04-06 chunk holding the gold reply '我还是懒得折腾' was not retrieved, so one half of a two-part question is missing.",
+    "quoted_answer_span": "记录里没有直接留下你当时怎么回复室友",
+    "quoted_source_span": "[2026-06-11 22:47] 我: WireGuard 我配了一晚上没配通，还是回去用 Tailscale 了"
+  },
+  {
+    "query_id": "s022",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Matches gold: no longer trains at a gym ('早不去了', card almost expired, the bookable school gym '懒得去') and is still running on the track ('我最近还在跑操场').",
+    "quoted_answer_span": "**健身房不去，最近在跑操场**",
+    "quoted_source_span": "[2026-02-14 20:24] 我: 我最近还在跑操场，先这样吧"
+  },
+  {
+    "query_id": "s023",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Correctly identifies 小王's Supabase (2024-03-16, registered and built two tables that night) as the one used first and Neon as only connection-tested. The interval is given as ~4 months 19 days because it uses the 2024-08-04 connection test instead of the 2024-07-21 recommendation as the second anchor — a ~2-week over-estimate of gold's 'about four months', same ballpark, and the endpoints are disclosed.",
+    "quoted_answer_span": "**小王推荐的 Supabase 先用起来**；两者相隔约 **4 个月 19 天**（2024-03-16 到 2024-08-04）",
+    "quoted_source_span": "[2024-03-16 20:21] 我: 那我今晚注册一个，先建两张表试试"
+  },
+  {
+    "query_id": "s024",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Says the earliest backend platform was Render and that it ran unchanged until the 2025-12-14 migration to Railway, citing the 2025-07-05 and 2025-10-26 records as proof of 'no change in between'. Matches gold (gold's extra 2024-03 start date was not asked).",
+    "quoted_answer_span": "**Render 一直用到 2025-12-14 才换掉，中间没有换过后端平台**",
+    "quoted_source_span": "[2025-12-14 20:31] 我: 后端也从 Render 迁到 Railway 了"
+  },
+  {
+    "query_id": "s025",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Answers 'not the same person' exactly as gold: 王哥 is 小王 (the reply '嗯，小王提过' disambiguates him), while the person doing the thesis with the school-provided MySQL is 小汪.",
+    "quoted_answer_span": "不是同一个人。张三说的“王哥”在同一段对话中被“我”称为“小王”",
+    "quoted_source_span": "[2025-01-14 23:21] 我: 嗯，小王提过，后来不是没定嘛"
+  },
+  {
+    "query_id": "s026",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Groups Vercel (first attempt) with Cloudflare Pages (the later one) as one kind — web hosting others can open — and puts the roommate's Cloudflare Tunnel in the other kind (his home NAS reached from outside), matching gold.",
+    "quoted_answer_span": "**一类的是：Vercel 和 Cloudflare Pages。**",
+    "quoted_source_span": "[2025-08-12 20:11] 我: 对，一个是部署网页，一个是机器之间互相访问"
+  },
+  {
+    "query_id": "s027",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Quotes both turns verbatim (小王: 'Neon 当年是我推荐给你的还是别人，我都忘了'; 我: '不是你，是另一个同学，他当时说也是 PG 的') and correctly identifies 同学A as the actual Neon recommender (2024-07-21). Gold's added detail that 小王 himself recommended Supabase is supplementary context, not what was asked.",
+    "quoted_answer_span": "我回：“不是你，是另一个同学，他当时说也是 PG 的”[来源 2]",
+    "quoted_source_span": "[2026-05-02 10:21] 我: 不是你，是另一个同学，他当时说也是 PG 的"
+  },
+  {
+    "query_id": "s028",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Answers both halves: stopped right after getting the connection working ('Neon 连上了...连上就收手了'), and the account was kept ('留着，账号还在，就是一直没动过') with the 2025-02-03 record confirming it still existed and undeleted. The trailing caveat only covers periods after the last evidence.",
+    "quoted_answer_span": "账号后来还留着",
+    "quoted_source_span": "[2024-11-19 22:32] 我: 留着，账号还在，就是一直没动过"
+  },
+  {
+    "query_id": "s029",
+    "label": "PARTIAL",
+    "unsupported_claim": false,
+    "evidence_sufficient": false,
+    "citation_supports_claim": true,
+    "reason": "Right overall conclusion (never switched, still on the original setup) and correct WireGuard identification plus the April reply '还是懒得折腾', but the June 2026 trial — the actual answer to '试的结果怎么样' — is missing; the answer instead asserts there is '没有可报告的试用结果', declining the half gold answers with the handshake failure and the return to Tailscale.",
+    "quoted_answer_span": "结论：没有试成/没有成功用上那套新方案，因此没有可报告的试用结果。",
+    "quoted_source_span": "[2026-04-06 21:38] 我: 我还是懒得折腾"
+  },
+  {
+    "query_id": "s030",
+    "label": "PARTIAL",
+    "unsupported_claim": false,
+    "evidence_sufficient": false,
+    "citation_supports_claim": true,
+    "reason": "Backend half is right (Render, address still reachable in Nov 2024, no migration in between), but the database half omits the decisive fact that it was still Supabase — the answer says the library's name is not written in the record and only mentions Supabase coming back in Jan 2025. Gold's Nov-19 Neon-hibernation decision is also absent.",
+    "quoted_answer_span": "10–12 月的记录没有写明这个库的具体名字；到 2025-01-12 你才说数据库换回 Supabase",
+    "quoted_source_span": "[2024-11-25 20:27] 我: 嗯，库里东西不多，先用着吧"
+  },
+  {
+    "query_id": "s031",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Says the thesis ended as demo-only with no real deployment (school-provided database, '我系统还没部署呢' in June, and '反正也不用上线，交完就完事了' after graduation). Gold's note that the paper was still unwritten is mid-course context rather than the asked ending.",
+    "quoted_answer_span": "**系统没有真的上线**；最后就是直接用学校那套，交上去、机房演示结束",
+    "quoted_source_span": "[2026-08-28 20:51] 小汪: 对，反正也不用上线，交完就完事了"
+  },
+  {
+    "query_id": "s032",
+    "label": "PARTIAL",
+    "unsupported_claim": false,
+    "evidence_sufficient": false,
+    "citation_supports_claim": true,
+    "reason": "Declines ('无法判断是否同一个') where gold states a definite answer (basically the same file-type, non-cloud local store). Only the 2025-09-03 SQLite chunk and an unrelated local-services chunk were retrieved, so the 2026-05-02 '轻量的那个' and 2026-08-10 '文件型的那个' lines were not available.",
+    "quoted_answer_span": "无法判断是否同一个。",
+    "quoted_source_span": "[2025-09-03 22:05] 我: 本地原型我就直接用 SQLite，不上云"
+  },
+  {
+    "query_id": "s033",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Matches gold on both parts: the excluded direction is 多模态 (reason '检索我比较熟，多模态我基本没碰过'), and as of 2026-03-05 the user still described the direction as 检索 only.",
+    "quoted_answer_span": "被排除的是 **多模态**",
+    "quoted_source_span": "[2025-11-26 20:33] 我: 检索我比较熟，多模态我基本没碰过"
+  },
+  {
+    "query_id": "s034",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Says the database 小王 recommended in 2024 (identified as Supabase) is no longer in use, traces the June 2025 move to Railway's PostgreSQL and the later confirmations that Railway remains the production DB while Neon never went live — matches gold.",
+    "quoted_answer_span": "## 结论：没有，已经不在用了",
+    "quoted_source_span": "[2024-03-16 20:13] 小王: 可以试试 Supabase"
+  },
+  {
+    "query_id": "s035",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Unanswerable query handled correctly: states the record never gives the final thesis title and cites the records showing the direction was still open ('方向定了再定名'); no title is invented or implied.",
+    "quoted_answer_span": "提供的聊天记录中没有出现导师最后给我定下的毕设题目名称。",
+    "quoted_source_span": "[2026-02-20 15:33] 导师: 题目的事我还是那个意思，方向定了再定名"
+  },
+  {
+    "query_id": "s036",
+    "label": "PASS",
+    "unsupported_claim": false,
+    "evidence_sufficient": true,
+    "citation_supports_claim": true,
+    "reason": "Correctly answers that no shop name appears in the record and distinguishes 小汪's '请你吃烧烤' (a food type) from a named restaurant; no name is supplied or implied.",
+    "quoted_answer_span": "提供的记录里没有提到那家店的具体名字。",
+    "quoted_source_span": "[2026-07-20 20:27] 小汪: 那你八月来找我玩啊，我请你吃烧烤"
+  }
+]
