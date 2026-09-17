@@ -27,6 +27,7 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | 12    | **Speaker-attribution clause (R10 fix)**                       | ✅ done — **A12 adopted**: ablated fabrications 2→**0**, corpus-v2 PASS held at 31/36, latency −2.4 s |
 | 13    | **Attribution screen (R11 guard) + retrieval frontier closed** | ✅ done — pool sweep closes the reach lever; screen flags **exactly** `s020`/`s032` on the defect arm, 0 on every clean arm, at a measured 25%% flag precision |
 | 14    | **Groundedness in the product surface**                        | ✅ done — gold-free caveats in `recall.py`; attribution signal is an **alarm** (0–1/arm), silence claims a **reminder** (~30%%/arm); product now ships A12 |
+| 15    | **Real-export ingestion (`chat_import.py` + product guard)**    | ✅ done — 4 layouts converted + **round-trip verified through the engine adapter**; un-ingestible corpora now fail loudly instead of answering from an empty index |
 | 8     | Persistence (PostgreSQL + pgvector)                            | ⏸                                                                                                                           |
 | 9     | Product UI                                                     | ⏸                                                                                                                           |
 | 10    | Multimodal recall                                              | ⏸                                                                                                                           |
@@ -1849,3 +1850,96 @@ and five measured negatives. Worth one more attempt only if a genuinely new mech
 higher-value work is now making the engine usable end-to-end on a real corpus (`recall.py` runs on a
 36-query synthetic stress corpus, not on the user's own chat export), which is what "core version
 complete" should mean for this project.
+
+---
+
+# Phase 15 — real-export ingestion: the engine stops failing silently on a user's own chat log
+
+## The failure, observed before anything was built
+
+The adapter accepts exactly one line shape. Pointing the product at a real export in any other layout
+indexed **zero messages and reported no error** — the engine would then answer "the record does not
+show it" to every question, looking confident while being blind:
+
+| export layout | messages | skipped | outcome |
+| ------------- | -------- | ------- | ------- |
+| canonical `[YYYY-MM-DD HH:MM] speaker: text` | 2 | 0 | OK |
+| Telegram-ish `[DD.MM.YY HH:MM]` | 0 | 2 | **silently empty** |
+| loose ISO with seconds | 0 | 2 | **silently empty** |
+| WeChat-ish speaker-first header + body line | 0 | 4 | **silently empty** |
+| date-on-its-own-line | 0 | 3 | **silently empty** |
+
+## What was built
+
+`chat_import.py` + 14 tests. It detects which of four well-specified layouts a file uses, converts it
+to canonical form, and **verifies the result by re-parsing it through the engine's own adapter** —
+nothing is reported as OK unless the round trip yields the same message count with zero skipped lines.
+Detected layouts now cover all four realistic shapes:
+
+| layout | shape |
+| ------ | ----- |
+| `canonical` | `[YYYY-MM-DD HH:MM] speaker: text` |
+| `bracket_dmy` | `[DD.MM.YY HH:MM] speaker: text` |
+| `iso_seconds` | `YYYY-MM-DD HH:MM:SS speaker: text` |
+| `speaker_first` | `speaker<spaces>YYYY-MM-DD HH:MM`, body on the following line(s) |
+
+An unrecognised file gets a **diagnosis**, not silence: it names what was tried, prints the per-layout
+match counts, shows the first five lines that failed with line numbers, and — for the one layout that
+is recognised but unsupported (date-on-its-own-line) — says so explicitly.
+
+`recall.py` now refuses a corpus it cannot ingest, exiting non-zero with the conversion command to run
+instead of answering questions about an empty index.
+
+## Three bugs, all found by running the thing rather than reading it
+
+1. **The header layout skipped every message body.** A header set the pending timestamp but never
+   marked the message as *open*, so the "is a body expected?" test was always false and each body line
+   was counted as skipped. Fixed by tracking openness explicitly; the `speaker_first` layout went from
+   0 to 2 messages on the fixture.
+2. **A UTF-8 BOM ate the first message.** Real exports carry one; stuck to line 1 it defeats the
+   pattern for exactly one message. Found by the first end-to-end CLI smoke test, not by the unit
+   tests, which had no BOM case.
+3. **My own test's premise was wrong.** I wrote a test asserting that a colon inside a speaker name
+   gets sanitised to `：`. It cannot: every profile's speaker group is `[^:]{1,24}`, so the name simply
+   ends at the first colon. The sanitiser is defensive and unreachable through the current profiles, so
+   the test now covers the real behaviour (a split, which still round-trips cleanly) and the sanitiser
+   is unit-tested directly.
+
+## A process failure worth recording
+
+While patching two files I used a PowerShell `Get-Content -Raw | Set-Content` round trip, which
+re-encoded them in the ANSI codepage and **destroyed both files' Chinese text irrecoverably** —
+`chat_import.py` (untracked, rewritten from scratch) and `recall.py` (restored from git and re-edited).
+This is the same family as the long-standing "PowerShell mangles inline Python" hazard already noted in
+this log, now with a sharper rule: **file edits go through the file tools, never through PowerShell
+text round-trips.** Both files were verified to decode as UTF-8 afterwards.
+
+## Honest limits
+
+* A **fixed list of four layouts**, not a format-guessing framework. Most real exports are not in any
+  of them and will get the diagnostic rather than a conversion.
+* **Text messages only.** Attachments, stickers, recalls and system notices are skipped and counted;
+  nothing is inferred.
+* **Multi-line bodies are joined with a single space**, because the canonical format is one message per
+  line. Newlines inside a message are a formatting artefact of the export; if a user's history carries
+  meaning in those breaks, it is lost.
+* The importer was validated on **fixtures I wrote**, not on a real user export. Its formats are
+  motivated by common exporters, but no real WeChat/Telegram file has been through it.
+* Sorting is by timestamp, so messages that share a minute keep their file order but an export whose
+  ordering is meaningful beyond timestamps may be reordered.
+
+## Decision: the engine is now usable end-to-end on a real chat log
+
+Question in, answer with traceable evidence cards and groundedness caveats out — on the user's own
+export rather than only on the synthetic stress corpus. That is the last piece "core version complete"
+was missing, and it is the shape the project was for.
+
+## Next step
+
+The remaining retrieval residual is characterised and expensive; the corpus needs no further work. The
+open items that would matter to a user are the ones the log already names: the product still indexes
+**only text**, retrieval is tuned and measured on a synthetic corpus rather than a real one, and any
+real export outside the four supported layouts still needs a conversion rule. The natural next phase is
+a **second source adapter** (a real, widely-used export layout) driven by an actual sample rather than
+by my assumptions — which requires the user to supply one, and is therefore the right thing to ask for
+at this gate instead of guessing.

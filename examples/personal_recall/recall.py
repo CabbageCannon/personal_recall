@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from uuid import uuid4
 
@@ -41,6 +42,7 @@ from quivr_core.rag.entities.config import (
 from evidence_cards import build_evidence_cards, cards_to_dict, render_cards
 from groundedness import assess
 from memory import SessionConfig
+from memory.events import parse_txt_events
 from memory.processor import ConversationSessionProcessor
 from run_baseline import register_answer_prompt, serialize_sources
 
@@ -157,6 +159,22 @@ def main() -> int:
         print(f"config   : k={args.k}, hybrid pool={args.hybrid_pool}, workflow={args.workflow}, "
               f"prompt={args.answer_prompt}")
         print(f"question : {args.question}\n")
+
+    # Guard against the silent-ingestion failure: the engine's adapter accepts exactly one line
+    # format, so a real export in any other layout indexes zero messages and every question then
+    # answers "the record does not show it" without any error. Fail loudly and say what to run.
+    if args.corpus.exists():
+        probe = parse_txt_events(args.corpus.read_text(encoding="utf-8-sig", errors="replace"))
+        if not probe.events:
+            print(
+                f"error: {args.corpus} yielded 0 messages ({probe.skipped_lines} line(s) skipped).\n"
+                "The engine reads one message per line as '[YYYY-MM-DD HH:MM] speaker: text'.\n"
+                "Convert your export first:\n"
+                f"  python chat_import.py --input {args.corpus} --out data/my_chat.txt\n"
+                "  python chat_import.py --list-formats",
+                file=sys.stderr,
+            )
+            return 2
 
     brain = build_brain(args.corpus, llm_config)
     response = brain.ask(
