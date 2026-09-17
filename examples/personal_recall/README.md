@@ -129,7 +129,34 @@ Output has three parts:
   sentence by lexical similarity measured ~17 % precision: multi-fact summary sentences legitimately
   cite several chunks, and bigram overlap produced spurious winners.
 
-## 3. Acceptance check on your own history
+## 3. Ask from a browser
+
+The same engine behind one local page: question box, answer, evidence cards, caveats. It reads the
+account export tree, so initialise that first (once, from the real WeChat data directory):
+
+```bash
+python export_account.py --multi-dir "C:\Users\<you>\WeChat Files\<wxid>\Msg\Multi" --out data/real/account
+python web.py
+```
+
+Then open **<http://127.0.0.1:8000>**.
+
+* **The data lives in `data/real/account`** — a subdirectory per message shard, one
+  `<talker>_messages.json` per conversation, plus the `sessions.json` listings that give the evidence
+  cards their conversation names. It is real chat, so it stays where `.gitignore` already covers it.
+* **Start it with `python web.py`.** `--account <dir>` points at another export tree and
+  `PERSONAL_RECALL_ACCOUNT` does the same for a shell that always uses one; `--port` changes the port.
+* **The index is built once, at startup** — parse and embed the whole account, then every question
+  reuses it. If that fails, the server still starts and the page says why rather than answering from
+  nothing.
+* **There is no upload, no login and no history.** Ingestion stays a CLI step, the page keeps no
+  record of what you asked, and the server binds `127.0.0.1` only — there is no flag for anything
+  else, because this process serves private chat.
+
+Answers come from `recall.answer_question`, the same path the CLI prints from, so the page and the
+terminal cannot disagree about what was retrieved or cited.
+
+## 4. Acceptance check on your own history
 
 The stress corpus answers *"how good is the engine under controlled conditions"*. This answers *"does
 it work on my history, on questions I care about"* — 15–20 questions across six categories, with
@@ -147,7 +174,7 @@ range, participants, text), the citations, the groundedness caveats, and the lat
 `labels` left `null` for you: `answer_correct`, `retrieval_correct`, `citation_binding_correct`,
 `attribution_correct`. Re-running preserves labels already filled in.
 
-## 4. Reproduce the measurements
+## 5. Reproduce the measurements
 Everything in `PROJECT_STATUS.md` is regenerable. Retrieval is deterministic under `--workflow
 no-rewrite`, which is what makes these comparisons exact rather than statistical.
 
@@ -190,6 +217,8 @@ Known limits, all recorded with numbers in `PROJECT_STATUS.md`:
 | path | role |
 | ---- | ---- |
 | `recall.py` | product CLI: question → answer + evidence + caveats |
+| `web.py`, `webapp/` | the local web UI: the same answer, in a browser |
+| `export_account.py` | WeChat account → the export tree both front ends read |
 | `chat_import.py` | real export → canonical corpus |
 | `groundedness.py` | gold-free caveats shown by the product |
 | `run_baseline.py` | the evaluated runner (all arms) |

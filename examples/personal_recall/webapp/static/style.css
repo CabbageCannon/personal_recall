@@ -1,0 +1,246 @@
+/* Quiet by design: light background, one centered column, hairline borders, generous whitespace.
+   The content is the interface — a chat line is the only thing on the page worth looking at, so
+   nothing here competes with it. No gradients, no glow, no animation, no decoration. */
+
+:root {
+  --bg: #fcfcfb;
+  --fg: #1b1b1a;
+  --muted: #6f6f6c;
+  --faint: #96968f;
+  --line: #e7e7e3;
+  --line-strong: #d8d8d3;
+  --surface: #ffffff;
+  --alarm: #8a4b1f;
+  --measure: 880px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans SC", "Noto Sans CJK SC", sans-serif;
+  font-size: 16px;
+  line-height: 1.75;
+}
+
+.page {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 48px 20px 96px;
+}
+
+.title {
+  margin: 0 0 28px;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* --- the question box ---------------------------------------------------------------------- */
+
+.ask {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.ask-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  line-height: 1.4;
+}
+
+.ask-input::placeholder {
+  color: var(--faint);
+}
+
+.ask-input:focus {
+  outline: none;
+  border-color: #a8a8a2;
+}
+
+.ask-button {
+  flex: 0 0 auto;
+  min-width: 46px;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.ask-button:hover:not(:disabled) {
+  border-color: #a8a8a2;
+}
+
+.ask-button:disabled {
+  color: var(--faint);
+  cursor: default;
+}
+
+.ask-input:focus-visible,
+.ask-button:focus-visible {
+  outline: 2px solid #9a9a94;
+  outline-offset: 2px;
+}
+
+/* --- states -------------------------------------------------------------------------------- */
+
+.state {
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* --- answer -------------------------------------------------------------------------------- */
+
+.block {
+  margin-top: 40px;
+}
+
+.block-title {
+  margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.answer {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* --- evidence cards ------------------------------------------------------------------------ */
+
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.card {
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.card-source {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.card-conversation {
+  font-weight: 600;
+}
+
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.line-time {
+  flex: 0 0 auto;
+  color: var(--faint);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.line-speaker {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.line-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.lines-empty {
+  margin: 0;
+  color: var(--faint);
+  font-size: 14px;
+}
+
+/* --- caveats ------------------------------------------------------------------------------- */
+
+.warning {
+  margin: 28px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--alarm);
+  border-radius: 6px;
+  color: var(--alarm);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.note {
+  margin: 16px 0 0;
+  color: var(--faint);
+  font-size: 13px;
+}
+
+@media (max-width: 560px) {
+  .page {
+    padding: 32px 16px 72px;
+  }
+
+  .card {
+    padding: 14px;
+  }
+}

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Personal Recall</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main class="page">
+  <h1 class="title">Personal Recall</h1>
+
+  <form class="ask" id="ask" autocomplete="off">
+    <input class="ask-input" id="question" name="question" type="text"
+           placeholder="问问过去发生过什么..." aria-label="问题"
+           autocomplete="off" autocapitalize="off" spellcheck="false">
+    <button class="ask-button" id="submit" type="submit" aria-label="查询">→</button>
+  </form>
+
+  <p class="state" id="state" role="status" hidden></p>
+
+  <section class="block" id="answer-block" hidden>
+    <h2 class="block-title">Answer</h2>
+    <p class="answer" id="answer"></p>
+  </section>
+
+  <section class="block" id="evidence-block" hidden>
+    <h2 class="block-title">Evidence</h2>
+    <div class="cards" id="evidence"></div>
+  </section>
+
+  <p class="warning" id="warning" hidden></p>
+  <p class="note" id="note" hidden></p>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>

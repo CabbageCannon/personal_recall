@@ -2734,3 +2734,170 @@ one place, because Phase 19 added a second *entry* point that could have grown i
 | real-data protection | ✅ `data/real/` ignored; smoke prints digests only; manifest carries no identity |
 | old single-conversation path | ✅ unchanged; text path proven byte-identical |
 | product parity regression | ✅ `test_product_parity.py` extended, passing |
+
+---
+
+# Phase 20 — minimal local web interface
+
+## What was built
+
+One page, one question box, and the three things worth showing: the answer, the evidence cards behind
+it, and the caveats a reader should act on. Nothing else.
+
+```
+Personal Recall
+[ 问问过去发生过什么...                    ] [→]
+
+Answer
+------------------------------------------------
+你当时最后换成了 Supabase。[来源 1]
+
+Evidence
++----------------------------------------------+
+| 小王 · 来源 1 · 2025-05-12                    |
+| 我、对方                                       |
+| ...原始聊天...                                 |
++----------------------------------------------+
+
+[!] citation / attribution warning   (only when there is one)
+记录可能不完整，请结合原始聊天确认。   (only when there is one)
+```
+
+| file | role |
+| ---- | ---- |
+| `web.py` | entrypoint: `python web.py` → `http://127.0.0.1:8000` |
+| `webapp/app.py` | `RecallState` (the index, built once), `create_app`, two endpoints |
+| `webapp/static/` | one HTML page, one stylesheet, one script — 490 lines total |
+| `tests/test_web.py` | 36 tests |
+
+## The rule this phase had to obey: one recall path
+
+The phase brief forbids a second retrieval implementation, and the temptation is real — a web backend
+is exactly where a `serialize_sources` + `build_evidence_cards` + `assess` sequence gets written a
+second time because the CLI's version prints instead of returning.
+
+The fix is structural rather than disciplinary. `recall.answer_question(brain, retrieval_config, *,
+question, show_uncited=False) -> dict` now owns the whole assembly —
+
+```
+brain.ask → serialize_sources → build_evidence_cards → assess
+```
+
+— and `ask_and_render` (CLI) and `RecallState.answer()` (`webapp/app.py`) both call it. The CLI
+function is now only a printer. `webapp/app.py` contains no `brain.ask`, no `serialize_sources`, no
+`build_evidence_cards` and no `assess`, and a test pins that. `test_product_parity.py` separately
+enforces that the adopted retrieval config is still constructed in exactly one place, which matters
+because Phase 19 added a second *entry* point (an account of many conversations) that could have grown
+its own copy.
+
+The extraction is behaviour-preserving: the pre-refactor `ask_and_render` was reimplemented verbatim
+and stdout diffed over 16 invocations (clean / citation-mismatch + attribution / uncited / empty answer
+× `--json` / human × `--show-uncited` on and off) — **0 byte differences**.
+
+## API
+
+Two endpoints, plus the page and its static assets. `/docs`, `/redoc` and `/openapi.json` are
+disabled, so the process holding private chat serves exactly four routes.
+
+```
+POST /api/recall   {"question": "..."}
+                -> {"answer", "evidence", "groundedness", "latency_ms"}
+GET  /api/status -> {"ready", "conversation_count", "message_count", "coverage"}
+```
+
+* An empty or whitespace-only question is refused twice: the page will not submit one, and the API
+  returns 400 rather than spending an embedding on it.
+* A failed index build is **not a crash**. The server still starts, `/api/status` reports
+  `ready: false` with a short reason, and questions get 503. A page that explains what is wrong beats
+  a process that refuses to exist.
+* The index is built **once**, at startup. Indexing parses every export and embeds every session —
+  minutes, not milliseconds — so per-question work would make the page unusable. There is no index
+  persistence yet; that is a deliberate deferral, not an oversight.
+
+## What the page shows, and what it refuses to
+
+Evidence cards carry the conversation display name, the time range, the participants and the original
+chat lines: the four things §29 asks for, and nothing more. **Embedding scores, RRF scores, chunk ids
+and internal UUIDs are not rendered** — the API carries some of them for `--json` parity with the CLI,
+and a test asserts the page renders none of them. The one use of `citation_index` is legitimate: it is
+what makes `[来源 2]` in the answer find the card labelled `来源 2`.
+
+Groundedness is graded rather than dumped. Only **citation binding mismatches** and **speaker
+attribution flags** become warnings; a silence claim — which cannot be judged without knowing the
+intended answer — is a soft line of text (`记录可能不完整，请结合原始聊天确认。`) rather than an alarm.
+When there is nothing to say, nothing renders.
+
+## Privacy
+
+* **`127.0.0.1` only.** `HOST` is a module constant in `webapp/app.py`, not a parameter, and `web.py`
+  has no flag that reaches it. This process serves real private chat to whoever can reach the port, so
+  a wildcard bind is a different product, not a configuration.
+* **No browser persistence.** No `localStorage`, `sessionStorage`, `IndexedDB` or cookies anywhere in
+  the frontend; no query history. Verified by grep, not by intent.
+* **Question text never reaches a log.** The recall endpoint catches every exception and prints only
+  the exception *class name*, because an upstream API error quotes its request — which here is the
+  question. The trade-off is deliberate and worth stating: a genuine bug in the assembly surfaces as a
+  502 plus a class name on stderr rather than a traceback.
+* **Conversation ids are not printed.** A card header shows the display name when the export recorded
+  one, and omits the header entirely when it did not — a wxid is an internal identifier and the UI has
+  no business showing one.
+* **No upload.** Ingestion stays a CLI step (`export_account.py`), so the web process never handles a
+  file it did not already have, and the browser needs no filesystem permission.
+
+## Verification
+
+**Live, against a real account export** (3 conversations, 4238 messages, 3 real message shards):
+
+```
+index    : 3 conversation(s), 4238 message(s) in 66.4s
+GET  /api/status        -> ready, conversation_count=3, message_count=4238,
+                           coverage 2025-06-02 19:14 .. 2026-09-17 16:47, partial=true
+POST /api/recall        -> 200, keys exactly {answer, evidence, groundedness, latency_ms},
+                           6 evidence cards, 6 with a conversation label,
+                           0 exposing a conversation id or a score
+POST /api/recall "   "  -> 400
+GET  /openapi.json      -> 404  (docs disabled)
+```
+
+The binding was checked rather than assumed: the machine's LAN address
+(`169.254.83.107:8123`) is **unreachable** while `127.0.0.1:8123` answers.
+
+`partial=true` above is the Phase 19 completeness rule arriving in the UI, and it exposed one
+integration gap that was fixed here: `web.py`'s startup warning restated only the missing-shard cause,
+so a **narrowed** export — every shard present, 269 of 272 conversations absent — announced
+"0 message shard(s) were not exported" over an incomplete history. It now reprints the report's own
+warning lines, so the two causes cannot drift apart again.
+
+**Tests:** see the closing status table. The web tests are offline and deterministic — they stub the
+brain, so no model, no network and no real data are needed.
+
+## Known limits
+
+* **The page was never seen rendered.** There is no browser and no jsdom in this environment, and no
+  npm toolchain was added to get one. `node --check` passes, the HTML/CSS/JS are served 200, and the
+  CSS is written to the brief (light background, one centred 880px column, CJK font stack, hairline
+  borders, a `max-width: 560px` breakpoint), but **phone-width appearance is unconfirmed**.
+* **Real-account scale was not measured end to end for the web process.** Indexing 4238 messages took
+  66.4s; an account of 449 conversations is a different order of magnitude, and index persistence does
+  not exist yet.
+* **Concurrency is untested.** Whether `Brain.ask` is safe under two simultaneous calls on one brain
+  was not established. The page blocks a double submit; nothing server-side serialises.
+* **One recall path is enforced, not proven exhaustive.** A test asserts `webapp/app.py` never calls
+  the assembly steps directly, which closes the way this could realistically drift — not every way.
+
+## Phase 20: status
+
+| requirement | state |
+| ----------- | ----- |
+| starts on localhost with one command | ✅ `python web.py` → `http://127.0.0.1:8000` |
+| account-wide index loads | ✅ 3 shards / 3 conversations / 4238 messages indexed once at startup |
+| can ask a real question | ✅ a real DeepSeek call returned answer + evidence + caveats |
+| answer renders | ✅ |
+| evidence cards render | ✅ conversation name, time range, participants, original lines |
+| citations map to the right card | ✅ `[来源 N]` ↔ the card labelled `来源 N` |
+| groundedness warns correctly | ✅ mismatches and attribution alarms; silence claims softened; silent when clean |
+| retrieval logic not duplicated | ✅ one `answer_question`; pinned by a test |
+| UI stays minimal | ✅ 490 lines of frontend; no sidebar, tabs, charts, banners or settings |
+| usable at phone width | ⚠️ written to the brief and served correctly, **not visually confirmed** |
+| real data never enters the repo | ✅ `data/real/` ignored; no browser persistence; ids never printed |
+| tests pass | ✅ see the closing table |
