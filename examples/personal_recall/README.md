@@ -156,7 +156,24 @@ Then open **<http://127.0.0.1:8000>**.
 Answers come from `recall.answer_question`, the same path the CLI prints from, so the page and the
 terminal cannot disagree about what was retrieved or cited.
 
-## 4. Acceptance check on your own history
+## 4. Audit a full export before trusting it
+
+Embedding a whole account is the slow step (272 conversations took ~15 minutes here), so check the
+tree first — the audit parses and segments it without touching the model, which is also what makes a
+failure unambiguous: ingestion, not memory.
+
+```bash
+python audit_account.py --account data/real/account_full \
+    --shard-dir "C:\Users\<you>\WeChat Files\<wxid>\Msg\Multi"
+```
+
+It prints how many shards were detected versus exported, whether the export is `PARTIAL` (a shard that
+was never exported, or a conversation filter), the conversation/message/chunk counts, the coverage
+span, and whether any chunk mixes two conversations — the one result that must always be `PASS`. It
+writes nothing unless `--json <path>` is given, and its output carries counts and short digests only:
+never a wxid, a display name or a line of chat, so it is safe to paste into an issue.
+
+## 5. Acceptance check on your own history
 
 The stress corpus answers *"how good is the engine under controlled conditions"*. This answers *"does
 it work on my history, on questions I care about"* — 15–20 questions across six categories, with
@@ -178,7 +195,7 @@ The default real-data path is account-wide: it calls the same `build_account_ses
 `answer_question()` used by the product. `--corpus` remains available for the older single-conversation
 or merged-shard acceptance runs.
 
-## 5. Reproduce the measurements
+## 6. Reproduce the measurements
 Everything in `PROJECT_STATUS.md` is regenerable. Retrieval is deterministic under `--workflow
 no-rewrite`, which is what makes these comparisons exact rather than statistical.
 
@@ -223,6 +240,7 @@ Known limits, all recorded with numbers in `PROJECT_STATUS.md`:
 | `recall.py` | product CLI: question → answer + evidence + caveats |
 | `web.py`, `webapp/` | the local web UI: the same answer, in a browser |
 | `export_account.py` | WeChat account → the export tree both front ends read |
+| `audit_account.py` | export tree → completeness and boundary report, no model needed |
 | `chat_import.py` | real export → canonical corpus |
 | `groundedness.py` | gold-free caveats shown by the product |
 | `run_baseline.py` | the evaluated runner (all arms) |
