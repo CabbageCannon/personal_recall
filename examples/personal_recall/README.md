@@ -164,8 +164,8 @@ everything a human needs to judge each answer recorded beside it.
 
 ```bash
 cp eval_questions.template.json eval_questions.json   # then fill in the questions
-python real_eval.py --questions eval_questions.json --corpus shards/ --out real_eval_results.json
-python real_eval.py --questions eval_questions.json --corpus shards/ --report-only
+python real_eval.py --questions eval_questions.json --account data/real/account --out real_eval_results.json
+python real_eval.py --questions eval_questions.json --out real_eval_results.json --report-only
 ```
 
 The runner **refuses to start while the template still holds placeholders**, so a half-filled question
@@ -173,6 +173,10 @@ set cannot quietly spend API calls. Each result row carries the answer, every re
 range, participants, text), the citations, the groundedness caveats, and the latency — plus four
 `labels` left `null` for you: `answer_correct`, `retrieval_correct`, `citation_binding_correct`,
 `attribution_correct`. Re-running preserves labels already filled in.
+
+The default real-data path is account-wide: it calls the same `build_account_session()` and
+`answer_question()` used by the product. `--corpus` remains available for the older single-conversation
+or merged-shard acceptance runs.
 
 ## 5. Reproduce the measurements
 Everything in `PROJECT_STATUS.md` is regenerable. Retrieval is deterministic under `--workflow

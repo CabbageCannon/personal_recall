@@ -7,6 +7,7 @@ the per-category summary. The template shipped in the repo must be **refused**, 
 
 from __future__ import annotations
 
+import inspect
 import json
 import shutil
 import sys
@@ -17,6 +18,7 @@ import pytest
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
+import real_eval  # noqa: E402
 from real_eval import (  # noqa: E402
     CATEGORIES,
     LABEL_FIELDS,
@@ -262,3 +264,13 @@ def test_summarize_tolerates_an_empty_run() -> None:
     summary = summarize([])
     assert summary["questions"] == 0
     assert render_report(summary)
+
+
+def test_runner_uses_the_account_wide_product_paths() -> None:
+    """The real eval must exercise the same index and answer assembly as the account product."""
+    source = inspect.getsource(real_eval.main)
+    assert '"--account"' in source
+    assert "build_account_session(" in source
+    assert "answer_question(" in source
+    for duplicate in ("brain.ask(", "serialize_sources(", "assess("):
+        assert duplicate not in source

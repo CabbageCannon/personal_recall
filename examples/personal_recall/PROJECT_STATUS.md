@@ -33,7 +33,8 @@ Branch: `personal-recall` · Base: `CabbageCannon/quivr`
 | 18A   | **WeFlow JSON source adapter (real WeChat, direct)**           | ✅ done — JSON → `MemoryEvent` with no TXT relay; text path proven **byte-identical (720/720)**; real-data leak found and closed |
 | 18B   | WeChat 3.x multi-shard completeness (`MSG*.db`)                 | ✅ done (B1) — event-level merge before sessioning; dedupe on `serverId` only; **PARTIAL-history warning** vs the real `Msg/Multi`; single-file path still 720/720 |
 | 18C   | Citation evidence consistency                                   | ✅ done — quote-anchored binding check (a lexical first version measured **17%% precision and was discarded**); **2 mismatches / 216 answers**, surfaced in the product panel |
-| 18D   | Real-data acceptance harness                                    | ✅ done — `real_eval.py` + template; refuses placeholders, preserves labels, reuses `build_session`; proven end-to-end on all 6 categories; **awaiting your questions** |
+| 18D   | Real-data acceptance harness                                    | ✅ done — `real_eval.py` + template; refuses placeholders, preserves labels; proven end-to-end on all 6 categories; **awaiting your questions** |
+| 20.1  | Account-wide real acceptance eval parity                       | ✅ `--account` uses `build_account_session`; every question uses the shared `answer_question` path |
 | 8     | Persistence (PostgreSQL + pgvector)                            | ⏸                                                                                                                           |
 | 9     | Product UI                                                     | ⏸                                                                                                                           |
 | 10    | Multimodal recall                                              | ⏸                                                                                                                           |
@@ -2901,3 +2902,19 @@ brain, so no model, no network and no real data are needed.
 | usable at phone width | ⚠️ written to the brief and served correctly, **not visually confirmed** |
 | real data never enters the repo | ✅ `data/real/` ignored; no browser persistence; ids never printed |
 | tests pass | ✅ see the closing table |
+
+---
+
+# Phase 20.1 — account-wide real acceptance eval parity
+
+`real_eval.py` had remained on the Phase 18D shape: `--corpus` built one corpus with
+`build_session()`, then the harness repeated `brain.ask → serialize_sources → assess` itself. The
+product had since moved to an account-wide index and a shared answer assembly path.
+
+The runner now accepts `--account` and builds that index with `build_account_session()`. Each question
+goes through `answer_question()`, the same function used by the CLI and web UI; `--corpus` remains as
+the legacy acceptance input. `--report-only` needs no source because it reads only the existing result
+file. A structural test rejects reintroducing direct `brain.ask`, source serialization, or groundedness
+assembly in the harness.
+
+**Verification:** 437 offline tests pass; no model call and no real-data read were needed.

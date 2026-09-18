@@ -30,8 +30,8 @@ The six categories come from the project brief:
 
 Usage::
 
-    python real_eval.py --questions eval_questions.json --corpus shards/ --out real_eval_results.json
-    python real_eval.py --questions eval_questions.json --corpus shards/ --report-only
+    python real_eval.py --questions eval_questions.json --account data/real/account --out real_eval_results.json
+    python real_eval.py --questions eval_questions.json --out real_eval_results.json --report-only
 """
 
 from __future__ import annotations
@@ -241,7 +241,14 @@ def render_report(summary: Mapping[str, Any]) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--questions", type=Path, required=True, help="the question set to run")
-    ap.add_argument("--corpus", type=Path, required=True, help="a corpus file, or a directory of shards")
+    source = ap.add_mutually_exclusive_group()
+    source.add_argument("--account", type=Path, help="an account-wide export directory")
+    source.add_argument("--corpus", type=Path, help="legacy: a corpus file, or a directory of shards")
+    ap.add_argument(
+        "--shard-dir",
+        type=Path,
+        help="optional WeChat Msg/Multi directory for account completeness reporting",
+    )
     ap.add_argument("--out", type=Path, default=BASE_DIR / "real_eval_results.json")
     ap.add_argument("--report-only", action="store_true", help="summarise --out without asking anything")
     ap.add_argument("--limit", type=int, default=None, help="only the first N questions")
@@ -256,6 +263,9 @@ def main() -> int:
         print(render_report(summarize(records)))
         return 0
 
+    if args.account is None and args.corpus is None:
+        ap.error("one of --account or --corpus is required unless --report-only is used")
+
     try:
         questions = load_questions(args.questions)
     except (QuestionSetError, json.JSONDecodeError) as exc:
@@ -267,50 +277,51 @@ def main() -> int:
     # Imported here so `--report-only` works without loading the model stack.
     import dotenv
 
-    from groundedness import assess
-    from recall import DEFAULT_K, ENV_PATH, build_session
-    from uuid import uuid4
+    from recall import (
+        DEFAULT_K,
+        ENV_PATH,
+        answer_question,
+        build_account_session,
+        build_session,
+    )
+    from run_baseline import load_existing_results, save_results
 
-    from quivr_core.rag.entities.chat import ChatHistory
-
-    from run_baseline import load_existing_results, save_results, serialize_sources
-
-    # `build_session` expects the environment to be loaded already, exactly as `recall.py` and
-    # `verify_product_parity.py` do before calling it.
+    # The product constructors expect the environment to be loaded already, exactly as `recall.py`
+    # does before calling them.
     dotenv.load_dotenv(ENV_PATH if ENV_PATH.exists() else None)
 
     existing = {row.get("id"): row for row in load_existing_results(args.out)}
+    target = args.account or args.corpus
     print(f"questions : {len(questions)}")
-    print(f"corpus    : {args.corpus}")
+    print(f"{'account' if args.account else 'corpus':9} : {target}")
     print(f"k         : {args.k or DEFAULT_K}")
     print(f"output    : {args.out}\n")
 
-    brain, retrieval_config = build_session(args.corpus, **({"k": args.k} if args.k else {}))
+    kwargs = {"k": args.k} if args.k else {}
+    if args.account:
+        brain, retrieval_config, account_report = build_account_session(
+            args.account, shard_dir=args.shard_dir, **kwargs
+        )
+        for line in account_report.lines():
+            print(f"  {line}")
+        print()
+    else:
+        brain, retrieval_config = build_session(args.corpus, **kwargs)
 
     records: list[dict[str, Any]] = []
     for index, question in enumerate(questions, start=1):
-        from time import perf_counter
-
-        started = perf_counter()
-        response = brain.ask(
-            run_id=uuid4(),
+        result = answer_question(
+            brain,
+            retrieval_config,
             question=question.question,
-            retrieval_config=retrieval_config,
-            chat_history=ChatHistory(chat_id=uuid4(), brain_id=brain.id),
         )
-        latency_ms = (perf_counter() - started) * 1000
-
-        sources = response.metadata.sources if response.metadata else []
-        serialized = serialize_sources(sources)
-        answer = response.answer or ""
-        groundedness = assess(answer, serialized).as_dict()
 
         record = build_record(
             question=question,
-            answer=answer,
-            serialized_sources=serialized,
-            latency_ms=latency_ms,
-            groundedness=groundedness,
+            answer=result["answer"],
+            serialized_sources=result["sources"],
+            latency_ms=result["latency_ms"],
+            groundedness=result["groundedness"],
             previous=existing.get(question.id),
         )
         records.append(record)
@@ -325,11 +336,11 @@ def main() -> int:
             flags.append(f"{record['invalid_citations']} invalid citation")
         print(
             f"[{index:02d}/{len(questions)}] {question.id} {question.category:24} "
-            f"{len(serialized):2} sources {latency_ms / 1000:6.1f}s"
+            f"{result['retrieved']:2} sources {result['latency_ms'] / 1000:6.1f}s"
             + (f"  ({', '.join(flags)})" if flags else "")
         )
         print(f"      Q: {question.question}")
-        print(f"      A: {answer[:160].replace(chr(10), ' ')}")
+        print(f"      A: {result['answer'][:160].replace(chr(10), ' ')}")
 
     print()
     print(render_report(summarize(records)))
