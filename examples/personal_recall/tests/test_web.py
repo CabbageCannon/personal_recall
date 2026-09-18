@@ -178,10 +178,14 @@ def test_the_api_answers_through_the_real_shared_assembly() -> None:
     assert payload["answer"] == "你最后换成了 Supabase。[来源 0]"
 
     card = payload["evidence"][0]
+    # These parsed lines are the evidence that the card came from the shared assembly: turning a
+    # cited chunk into timestamped speaker lines is what `build_evidence_cards` does, and the web
+    # layer has no code that could produce them. The chunk id that used to be asserted here is now
+    # deliberately withheld — it embeds the talker — so the proof rests on the lines instead.
     assert card["lines"] == [
         {"timestamp": "2025-05-12 17:43", "speaker": "我", "text": "我最后换成 Supabase 了"}
     ]
-    assert card["memory_chunk_id"] == f"{ALICE}-session-0000"
+    assert "memory_chunk_id" not in card
     assert set(payload["groundedness"]) == {
         "n_sources", "citations", "invalid_citations", "uncited", "absence_claims",
         "attribution_flags", "citation_mismatches", "warnings",
@@ -206,7 +210,13 @@ def test_the_backend_has_no_recall_logic_of_its_own() -> None:
 
 
 def test_the_api_calls_the_shared_function(monkeypatch) -> None:
-    """One call, with the question, and the response is that function's result — nothing else."""
+    """One call, with the question, and the response is that function's result — nothing else.
+
+    "Nothing else" now includes nothing the page does not render: the cards are projected onto
+    ``PAGE_CARD_FIELDS``, so a field the shared assembly produced and the page ignores (``label``,
+    ``chunk_index``, the chunk id) is dropped rather than forwarded. The endpoint still adds nothing
+    of its own — the equality below is exact, which is what makes that checkable.
+    """
     import recall
 
     seen = {}
@@ -234,7 +244,6 @@ def test_the_api_calls_the_shared_function(monkeypatch) -> None:
         "evidence": [
             {
                 "citation_index": 0,
-                "label": "[我, 对方 · 2025-05-12 17:43]",
                 "lines": [],
                 "conversation": "小王",
             }
@@ -386,6 +395,60 @@ def test_read_conversation_labels_survives_a_missing_directory() -> None:
     assert read_conversation_labels(SCRATCH_ROOT / "nowhere") == {}
 
 
+def test_a_listing_that_names_a_conversation_after_itself_yields_no_label() -> None:
+    """The real-account shape, found by looking at the page in a browser (Phase 20.5).
+
+    ``weflow-cli sessions --json`` returns ``displayName`` **equal to** ``username`` when it has no
+    remark or nickname to resolve. Every one of a real account's 272 conversations came back that way,
+    so a guard of "is the display name non-empty" passed for all of them and every evidence card
+    printed a raw wxid or group id where a conversation name belongs. No synthetic fixture had caught
+    it, because a fixture always gives the two values different string constants.
+    """
+    root = SCRATCH_ROOT / "labels_self"
+    talkers = (ALICE, BOB, "synthetic_group@chatroom")
+    try:
+        shard = root / "MSG0"
+        shard.mkdir(parents=True, exist_ok=True)
+        (shard / "sessions.json").write_text(
+            json.dumps(
+                [{"username": t, "displayName": t} for t in talkers], ensure_ascii=False
+            ),
+            encoding="utf-8",
+        )
+        for talker in talkers:
+            (shard / f"{talker}_messages.json").write_text("[]", encoding="utf-8")
+
+        assert read_conversation_labels(root) == {}, (
+            "a talker id printed as a name is the leak this guard exists to prevent"
+        )
+    finally:
+        shutil.rmtree(SCRATCH_ROOT, ignore_errors=True)
+
+
+def test_a_group_talker_is_never_a_display_name() -> None:
+    """Even a differently-spelled group id is an identifier: the suffix gives it away."""
+    root = SCRATCH_ROOT / "labels_group"
+    try:
+        shard = root / "MSG0"
+        shard.mkdir(parents=True, exist_ok=True)
+        (shard / "sessions.json").write_text(
+            json.dumps(
+                [
+                    {"username": "synthetic_group@chatroom", "displayName": "other_synthetic@chatroom"},
+                    {"username": ALICE, "displayName": "小王"},
+                ],
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        for talker in ("synthetic_group@chatroom", ALICE):
+            (shard / f"{talker}_messages.json").write_text("[]", encoding="utf-8")
+
+        assert read_conversation_labels(root) == {ALICE: "小王"}
+    finally:
+        shutil.rmtree(SCRATCH_ROOT, ignore_errors=True)
+
+
 def test_the_page_shows_no_internal_id_score_or_metadata() -> None:
     """The API carries chunk ids and scores for the CLI's `--json`; the page must not print them."""
     script = (STATIC_DIR / "app.js").read_text(encoding="utf-8")
@@ -402,6 +465,46 @@ def test_the_page_shows_no_internal_id_score_or_metadata() -> None:
     # The card renders exactly the fields a reader needs, and nothing that came along with them.
     for field in ("citation_index", "conversation", "start_time", "end_time", "participants", "lines"):
         assert field in script, f"the evidence card lost {field}"
+
+
+def test_the_api_ships_no_chunk_id_and_no_talker_to_the_browser() -> None:
+    """The DOM rule applies to the payload too: a response to a browser is still shown to a browser.
+
+    Found on a real account (Phase 20.5), and found *only* because the check moved from the response's
+    key names to its values. A chunk id is ``f"{conversation_id}-session-NNNN"``, so ``memory_chunk_id``
+    carries the talker — a group id or a wxid — inside a response that had already been stripped of the
+    conversation label. The first version of this check looked for a ``conversation_id`` key, found
+    none, and reported a clean payload while the id rode along in another field.
+    """
+    state = loaded_state(f"你最后换成了 Supabase。[来源 0]", [source(SUPABASE_LINE)])
+    payload = client_for(state).post("/api/recall", json={"question": "我最后用了哪个数据库？"}).json()
+
+    card = payload["evidence"][0]
+    assert card["citation_index"] == 0
+    assert set(card) <= {
+        "citation_index",
+        "conversation",
+        "start_time",
+        "end_time",
+        "participants",
+        "lines",
+    }, f"the page card grew a field nobody renders: {sorted(card)}"
+
+    blob = json.dumps(payload, ensure_ascii=False)
+    assert ALICE not in blob, "the talker id reached the browser"
+    assert "session-" not in blob, "a chunk id reached the browser"
+    assert "memory_chunk_id" not in blob
+    assert "chunk_index" not in blob
+
+
+def test_a_named_conversation_still_reaches_the_card_after_the_projection() -> None:
+    """Projecting must drop debug fields, not the one field the projection exists to add."""
+    state = loaded_state(f"你最后换成了 Supabase。[来源 0]", [source(SUPABASE_LINE)])
+    card = client_for(state).post("/api/recall", json={"question": "我最后用了哪个数据库？"}).json()[
+        "evidence"
+    ][0]
+    assert card["conversation"] == "小王"
+    assert card["lines"], "the original chat lines are the point of the card"
 
 
 # --- groundedness ----------------------------------------------------------------------------

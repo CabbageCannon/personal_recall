@@ -64,6 +64,28 @@ class ConversationDescriptor:
         """What to show a human — never used as a key."""
         return self.display_name or self.conversation_id
 
+    @property
+    def has_real_name(self) -> bool:
+        """True only when ``display_name`` is a *name*, not the identity spelled again.
+
+        ``label`` deliberately falls back to the talker, which is the right thing for a terminal the
+        owner is reading (it is the handle they pass to ``--only``). It is the wrong thing for a
+        surface that promises a human-readable label, because a wxid is an internal identifier.
+
+        The failure this exists for was found on a real account, not in a fixture: ``weflow-cli
+        sessions --json`` on the tested version returns ``displayName`` **equal to** ``username`` when
+        it has no remark or nickname to resolve, so every one of the account's 272 conversations
+        carried a "display name" that was the raw talker. A guard of ``if display_name`` therefore
+        passed for all of them and the web UI printed a group id where a name belongs. Synthetic
+        fixtures never caught it because they always gave the two values different string constants.
+        """
+        name = self.display_name.strip()
+        if not name or name == self.conversation_id:
+            return False
+        # A chatroom's own id is the only thing that legitimately ends in the group suffix; a group
+        # a person named never does.
+        return GROUP_SUFFIX not in name
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "conversation_id": self.conversation_id,

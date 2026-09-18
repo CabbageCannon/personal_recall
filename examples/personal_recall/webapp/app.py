@@ -67,6 +67,10 @@ def read_conversation_labels(account_dir: Path) -> dict[str, str]:
 
     Conversations with no recorded display name are left out rather than labelled with their talker:
     a wxid is an internal identifier, and the UI has no business printing one.
+
+    The test is ``has_real_name``, not "is the field non-empty". On a real account the exporter's
+    ``sessions --json`` listing gives every conversation a ``displayName`` equal to its ``username``,
+    so a truthiness guard passes for all of them and the page prints a group id where a name belongs.
     """
     from memory import load_account_directory
 
@@ -77,7 +81,7 @@ def read_conversation_labels(account_dir: Path) -> dict[str, str]:
     return {
         descriptor.conversation_id: descriptor.display_name
         for descriptor in layout.descriptors
-        if descriptor.display_name
+        if descriptor.has_real_name
     }
 
 
@@ -142,25 +146,42 @@ class RecallRequest(BaseModel):
     question: str = ""
 
 
-def decorate_evidence(
+#: Exactly what ``webapp/static/app.js`` renders. The API returns the page's fields and nothing else.
+#:
+#: ``memory_chunk_id`` is the reason this list exists rather than a pass-through: a chunk id is
+#: ``f"{conversation_id}-session-NNNN"``, so shipping it hands the browser the talker — a group id or
+#: a wxid — in a response that deliberately keeps the conversation label out. Chunk ids, retrieval
+#: scores and ``n_events`` are useful to the CLI's ``--json``, which reads ``recall.answer_question``
+#: directly and is unaffected by this projection; they are not useful to a page that must not print
+#: an internal identifier. Found by asserting on the payload's *values*, not on its key names: the
+#: first check looked for a ``conversation_id`` key, found none, and passed while the id rode along
+#: inside another field.
+PAGE_CARD_FIELDS = ("citation_index", "start_time", "end_time", "participants", "lines")
+
+
+def evidence_for_page(
     evidence: list[dict[str, Any]],
     sources: list[dict[str, Any]],
     labels: dict[str, str],
 ) -> list[dict[str, Any]]:
-    """Add the one field a reader needs that the shared card does not carry: the conversation name.
+    """Project the shared evidence cards down to the page's fields, adding the conversation name.
 
     ``citation_index`` is the card's position in the retrieved sources — that is what the framework's
     ``Source: N`` numbering means — so the conversation it came from is one lookup away. Only the
-    display name is copied out; the conversation id stays where it is.
+    display name is copied out; the conversation id stays where it is, and every other field is
+    dropped rather than forwarded.
     """
+    projected: list[dict[str, Any]] = []
     for card in evidence:
+        page_card = {key: card[key] for key in PAGE_CARD_FIELDS if key in card}
+
         index = card.get("citation_index")
-        if not isinstance(index, int) or not 0 <= index < len(sources):
-            continue
-        name = labels.get(sources[index].get("conversation_id") or "")
-        if name:
-            card["conversation"] = name
-    return evidence
+        if isinstance(index, int) and 0 <= index < len(sources):
+            name = labels.get(sources[index].get("conversation_id") or "")
+            if name:
+                page_card["conversation"] = name
+        projected.append(page_card)
+    return projected
 
 
 def coverage_of(report: Any) -> dict[str, Any]:
@@ -236,7 +257,7 @@ def create_app(state: RecallState) -> FastAPI:
 
         return {
             "answer": result["answer"],
-            "evidence": decorate_evidence(
+            "evidence": evidence_for_page(
                 result["evidence"], result["sources"], state.conversation_labels
             ),
             "groundedness": result["groundedness"],
