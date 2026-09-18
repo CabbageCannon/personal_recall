@@ -2918,3 +2918,212 @@ file. A structural test rejects reintroducing direct `brain.ask`, source seriali
 assembly in the harness.
 
 **Verification:** 437 offline tests pass; no model call and no real-data read were needed.
+
+---
+
+# Phase 20.5 — Full account operational acceptance
+
+Phase 19 proved the rules on fixtures and Phase 20 built a UI on a bounded sample of 8 conversations.
+This phase ran the whole thing on the real account, at real scale, and it is the first time any of
+these numbers existed.
+
+Everything below is an **aggregate**: shard names, counts, date ranges and durations. No wxid, no
+display name, no group name, no message text and no question appears anywhere in this document or in
+the commands that produced it.
+
+## The account, located without being asked
+
+Read from the live `~/.weflow-cli/config.json`: `dbPath3x` → `…\Msg\Multi\MSG2.db`, whose parent
+directory is the account. The machine holds exactly one directory with a `Msg\Multi`, and it is the
+one the config points at, so there was no ambiguity to resolve and no reason to prompt.
+
+| shard | size | shard WAL |
+| ----- | ---- | --------- |
+| `MSG0.db` | 180 MB | 0 MB |
+| `MSG1.db` | 240 MB | 0 MB |
+| `MSG2.db` | 210 MB | 1.1 MB |
+
+`FTSMSG*.db` (search indexes) and `MediaMSG*.db` are excluded by `discover_message_shards`, which the
+dry run confirmed: 3 shards detected, not 9.
+
+**WAL caveat, recorded not fixed.** `MSG2.db-wal` holds 1.1 MB that the exporter cannot see, and
+WeChat writes the newest messages to the log before merging it into the database. The newest messages
+in the account may therefore be missing from everything below. This is the caveat Phase 19 already
+documented; it is restated here because a full-account number makes it easy to forget.
+
+## Export
+
+Dry run first, and it was clean: all three shards listed without an error, no lock, no key problem.
+`196 + 146 + 107 = 449` conversation exports to produce, nothing written.
+
+Then the full export — **no `--only`, no `--shards`**:
+
+```
+message shards : 3 exported of 3 detected ['MSG0', 'MSG1', 'MSG2']
+conversations  : 449 listed
+files written  : 449 (412416 messages reported by the exporter)
+failures       : 0
+filtered_conversations: 0
+wall time      : 39.5 min
+```
+
+Every completeness condition the phase sets is met: `missing_shards == 0`, `filtered_conversations ==
+0`, all detected shards exported, zero failures, and nothing skipped silently.
+
+**The user's real config was not touched.** Its SHA-256 was recorded before the export and compared
+after: identical. The exporter reads it once and runs `weflow-cli` against a temp scratch profile it
+deletes on every exit path.
+
+**The databases were opened read-only.** No `MSG*.db` was modified, moved, renamed or checkpointed.
+
+## Audit — offline, no model, no embedding
+
+`audit_account.py` (new this phase) parses and segments the whole tree without loading BGE, so a
+failure here is unambiguously ingestion rather than memory.
+
+```
+conversation files     : 449
+message rows in files  : 412416      <- counted from files
+messages kept          : 412416      <- counted by the parser
+conversations found    : 272
+conversations imported : 272
+conversations with no messages : 0
+duplicates removed     : 0
+without a serverId     : 279 (kept, never deduplicated)
+skipped (unparseable)  : 0
+coverage               : 2025-05-20 00:32:12 .. 2026-09-19 00:08:11
+chunks                 : 22751
+conversations spanning >1 shard : 118  (43 %)
+largest conversation   : 176396 messages  (42.8 % of the whole account)
+PARTIAL                : False
+crossed chunks         : 0   PASS
+```
+
+Three things worth reading twice:
+
+* **The two counts agree.** 449 files and 412 416 rows, counted from the filesystem; 272
+  conversations and 412 416 messages, counted by the parser. A disagreement between them would have
+  been the finding.
+* **`discovered == imported` (272/272).** Phase 19's report distinguishes conversations that were
+  found from conversations that contributed messages, and at this scale the difference is zero: there
+  is no half-exported conversation hiding in the account, and nothing to explain away.
+* **118 of 272 conversations (43 %) span more than one shard.** Cross-shard merging is not an edge
+  case on real data; without Phase 18B, two thirds of the account's *conversations* would be split.
+* **The boundary held.** `crossed_conversation_chunks` recomputed chunk membership from event ids
+  across all 22 751 chunks and found none mixing two conversations. This is the phase's hard rule,
+  checked on the real account rather than promised.
+
+## Index build
+
+The real product path, unchanged: BGE-small-zh-v1.5 on CPU, hybrid retrieval, `k=20`, hybrid pool 30,
+`no-rewrite`, the cited-attributed prompt.
+
+```
+index : 272 conversation(s), 412416 message(s) in 870.6s   (14.5 min)
+```
+
+Peak process RSS observed during the build: **≈1.5 GB**. No OOM, no FAISS error, no Windows path
+problem, no event-loop error. The index is built **once at startup** and reused; there is still no
+persistence, so 14.5 minutes is the price of every restart at this scale.
+
+## Web, in a real browser
+
+`GET /api/status`:
+
+```
+ready: true, conversation_count: 272, message_count: 412416,
+coverage: 2025-05-20 00:32:12 .. 2026-09-19 00:08:11, partial: false
+```
+
+Phase 20 shipped with a known gap — nobody had ever seen the page render. Closed here by driving real
+headless Chrome over CDP, typing into the real input and submitting the real form, so the path under
+test is the one a person takes:
+
+| viewport | horizontal overflow | column | cards | card overflow | answer / evidence / warning |
+| -------- | ------------------- | ------ | ----- | ------------- | --------------------------- |
+| 1280×900 | 0 px | 880 px | 7 | 0 | rendered / rendered / rendered |
+| 390×844 | 0 px | 390 px | 2 | 0 | rendered / rendered / rendered |
+
+CJK font stack resolves, background is the intended light `#fcfcfb`, the input is 304×48 and the
+button 46×48 (comfortable at phone width). The card count differs between the two runs because the
+cards follow what the *answer* cited, and answer generation is not reproducible run to run — a
+documented property of the product, not a defect.
+
+A real question was asked end to end: HTTP 200, answer, evidence, groundedness, `latency_ms` 43.7 s
+(18.3 s on an earlier question) at `k=20` over 22 751 chunks.
+
+## Two real bugs — both found only by looking at real data
+
+Neither was reachable from a synthetic fixture, and both were identifier leaks.
+
+**1. Every evidence card printed a raw talker id where a conversation name belongs.**
+`weflow-cli sessions --json` on this version returns `displayName` **equal to** `username` when it has
+no remark or nickname to resolve. All 272 of the account's conversations came back that way, so
+`read_conversation_labels`'s guard of "is the display name non-empty" passed for every one of them and
+the card header read `来源 10` followed by the group's raw talker id. The web backend's own docstring promised the
+opposite — *"a wxid is an internal identifier, and the UI has no business printing one"* — and the
+guard tested the wrong thing.
+
+Fixed by moving the rule to where identity rules live: `ConversationDescriptor.has_real_name` is false
+when the display name is absent, equals the talker, or carries the group suffix. `read_conversation_labels`
+now returns **0** labels for this account instead of 272 identifiers, and the card simply shows
+`来源 10` with the time range and participants.
+
+Fixtures never caught it because a fixture always gives the two values different string constants.
+
+**2. The API payload carried the talker inside `memory_chunk_id`.** A chunk id is
+`f"{conversation_id}-session-NNNN"`, so the response handed the browser a group id in a field
+alongside the conversation label that had just been removed. The page never rendered it — but a
+response to a browser is still shown to a browser.
+
+This one is worth recording for *how* it was missed: the first version of the check asked whether the
+payload contained a `conversation_id` **key**, found none, and passed. Asserting on the payload's
+**values** found it immediately. `webapp/app.py` now projects each card onto `PAGE_CARD_FIELDS` — the
+six fields `app.js` actually renders — so debug metadata is dropped rather than forwarded, and a test
+pins the field set exactly.
+
+Both fixes have regression tests that fail without them.
+
+## Tests
+
+**455 pass** (437 before this phase: +14 for `audit_account.py`, +4 for the two privacy fixes).
+
+## Known limits and what to do next
+
+* **No conversation names exist anywhere in this pipeline.** The weflow-cli version tested returns
+  `displayName == username` for every conversation, so after the fix the cards carry no label at all.
+  A reader can tell *when* and *between whom*, but not *which chat*. Getting real names means reading
+  `weflow-cli contacts` (remarks, nicknames, group names) and joining on the talker — **this is the
+  single biggest remaining gap**, and it is a small feature rather than a redesign.
+* **Real acceptance questions are still pending.** `eval_questions.json` does not exist; the 18-slot
+  template is untouched. Questions must be ones whose answers the user already knows, which is what
+  makes the four manual labels meaningful, so they were not invented here. Full account ready; real
+  acceptance eval pending user.
+* **14.5 minutes per start.** No index persistence, no embedding cache, no incremental indexing. Not
+  optimised by design — this phase measured first.
+* **One conversation is 42.8 % of the account**, which will dominate any latency figure that mixes
+  conversations together.
+* **WAL**, as above: committed history, not a guarantee of the newest messages.
+* **A conversation-filtered export still cannot be detected if its manifest is deleted** (a Phase 19
+  limit). The full export here is unfiltered, so it does not apply to these numbers.
+
+## Phase 20.5: status
+
+| requirement | state |
+| ----------- | ----- |
+| the full account is discovered | ✅ located automatically from the live weflow config, one candidate |
+| every MSG shard was processed | ✅ 3 of 3; `FTS*`/`Media*` correctly excluded |
+| no `--only`, no `--shards`, `filtered_conversations = 0` | ✅ |
+| export tree built | ✅ 449 files, 412 416 messages, 0 failures, 39.5 min |
+| conversations unioned correctly | ✅ 272 discovered, 272 imported |
+| multi-shard conversations merged | ✅ 118 of 272 span more than one shard |
+| `crossed conversation chunks = 0` | ✅ PASS over 22 751 chunks |
+| `AccountImportReport.partial = false` | ✅ (`missing_shards = 0`, `filtered_conversations = 0`) |
+| full-account session build | ✅ 22 751 chunks, 0 skipped |
+| full-account BGE + FAISS index | ✅ built, no OOM, no error |
+| real build time recorded | ✅ 870.6 s, ≈1.5 GB peak RSS |
+| web ready, `/api/status` correct | ✅ 272 / 412 416 / `partial: false` |
+| a real query end to end | ✅ HTTP 200 with answer, evidence, groundedness, latency |
+| the page actually looked at | ✅ desktop and 390 px, 0 overflow, cards readable |
+| real data still git-ignored | ✅ `data/real/` covers the export, logs, audit and screenshots |
+| real acceptance eval | ⏸ **pending user questions** |
