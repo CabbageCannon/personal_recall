@@ -3261,3 +3261,142 @@ injected into chunk text.
   the alternative was a card whose header depends on which source happened to know that conversation.
 * **Duplicate names are allowed and not disambiguated.** Two conversations may both read "小王": a
   label is not an identity, and the frontend is never shown a stable id to tell them apart.
+
+---
+
+# Phase 20.7 — Full-account real acceptance eval
+
+The first time the engine has been asked questions whose answers a human actually knows, against the
+whole account. Everything below is an aggregate: counts, timings and anonymous digests. The questions,
+the answers, the evidence and the labels stay in `data/real/`, which `.gitignore` excludes.
+
+## What was run
+
+```
+real_eval.py --questions data/real/eval_question.json \
+             --account data/real/account_full \
+             --shard-dir "<the account's Msg/Multi>" \
+             --out data/real/real_eval_results.json
+```
+
+The product defaults were used exactly as shipped and were not re-tuned for this run: session
+chunking, BGE-small-zh-v1.5, hybrid retrieval, `k=20`, hybrid pool 30, `no-rewrite`, cited-attributed
+prompt. This is acceptance, not another experiment arm.
+
+The index was built **once** for this phase (≈14.5 minutes, the Phase 20.5 figure), not once per
+phase.
+
+## The question set
+
+18 questions, three in each of the six categories:
+
+| category | n | what it is for |
+| -------- | - | -------------- |
+| `single_fact_recall` | 3 | one fact, usually from a single episode |
+| `timeline_reasoning` | 3 | something that changed over time; needs several points ordered |
+| `speaker_attribution` | 3 | who recommended / said / did it — the guard against borrowing someone else's experience |
+| `multi_source_synthesis` | 3 | answer must combine evidence from more than one time or conversation |
+| `abstention` | 3 | the user is confident the record does not contain it |
+| `older_memory` | 3 | genuinely old material, against recency bias over 412 416 messages |
+
+Validated **offline before anything was spent**, through the harness's own `load_questions()`: 18
+questions, ids unique across `q01`–`q18`, all six categories populated, every question ≥ 6 characters
+(minimum measured 13), every question carrying a note (minimum 21 characters), and the placeholder
+marker absent from every `question` and every `note`.
+
+Two details worth recording:
+
+* **`note` never reaches the model.** It is the user's own gold memory — expected answer, rough date,
+  rough contact, known state changes — and it is written into the result record for the human labeller
+  only. `real_eval.py` passes `question.question` to `answer_question`; the note is never part of the
+  prompt, the retrieval query or anything sent to DeepSeek.
+* **The file carries a leftover `instructions` block** holding the template's placeholder marker. The
+  loader ignores that field entirely, and it reaches neither the model nor the results, so it is
+  cosmetic — but it is the kind of thing that would fail a stricter validator, and it is recorded here
+  rather than silently ignored.
+
+## Latency
+
+| category | mean ms | median ms | mean sources |
+| -------- | ------- | --------- | ------------ |
+| `single_fact_recall` | 31 478 | 25 153 | 20.0 |
+| `timeline_reasoning` | 54 471 | 33 448 | 20.0 |
+| `speaker_attribution` | 49 108 | 40 169 | 20.0 |
+| `multi_source_synthesis` | 44 899 | 46 357 | 20.0 |
+| `abstention` | 31 824 | 31 831 | 20.0 |
+| `older_memory` | 26 454 | 28 026 | 20.0 |
+
+**Overall mean 39 706 ms, median 32 640 ms.** Every question retrieved the full `k=20`, and the mean is
+well above the 14.5-minute index build amortised per query — this is a local-CPU embedding plus a
+network generation call over a 22 751-chunk index, not a tuned latency.
+
+## Automated signals
+
+| signal | count |
+| ------ | ----- |
+| invalid citations | **0** |
+| citation binding mismatches | **0** |
+| attribution flags | 3 (all inside one `speaker_attribution` question) |
+| silence claims | 14 |
+| answers carrying any warning | 13 / 18 |
+
+Zero invalid citations and zero binding mismatches across 360 retrieved sources is the strongest
+result here: every citation the answers made resolved to a real source, and no answer quoted text that
+was not in the chunk it cited.
+
+The 14 silence claims are **reminders, not alarms** — the documented base rate for that signal is
+around 30 % of answers, and the tool cannot distinguish "the record does not show it" from "it was not
+retrieved". The three attribution flags sit exactly where the category was designed to put them.
+
+## Conversation diversity, and whether the outlier dominates
+
+Phase 20.5 measured one conversation holding **42.8 %** of the account's messages. The obvious worry
+was that it would also swallow the evidence for questions that have nothing to do with it. It does not:
+
+```
+questions whose evidence came from exactly one conversation :  0 / 18
+mean distinct conversations per question                     : 12.3
+max distinct conversations for one question                  : 16
+
+retrieved slots                                              : 360
+distinct conversations appearing in evidence                 :  86
+most-retrieved conversation's share of all slots             : 14.7 %
+corpus baseline: the largest conversation, by message count  : 42.8 %
+```
+
+The largest conversation is **under**-represented relative to its size, not over. Retrieval is not
+proportional to corpus mass, and no single conversation crowds the others out — 86 distinct
+conversations appear across 360 slots.
+
+This is recorded as an observation, not acted on. Nothing about retrieval was changed in this phase.
+
+## What is deliberately not concluded
+
+**All 18 `labels` objects are still `null`.** `answer_correct`, `retrieval_correct`,
+`citation_binding_correct` and `attribution_correct` are human judgements; no judge model was
+introduced and nothing was inferred from the answers. The four fields are the deliverable's hinge, and
+the failure-case table the phase is really after —
+
+```
+Retrieval Miss          Wrong Conversation     Temporal Confusion
+Speaker Attribution     Multi-evidence Failure Generation Failure
+Citation Binding        Unsupported Claim      Correct / False Abstention
+Large-conversation Dominance (here: not observed)
+```
+
+— cannot be filled in from latency and warning counts. The evidence needed to fill it is saved in
+`data/real/real_eval_results.json`, and the next step is a human reading it alongside the notes.
+
+## Phase 20.7: status
+
+| requirement | state |
+| ----------- | ----- |
+| question set validated offline before spending | ✅ 18 / 6 categories / ids unique / no placeholder in any question or note |
+| full account, product defaults, `k=20` | ✅ unchanged; one index build shared with the phase |
+| all questions executed | ✅ 18 / 18 |
+| automatic aggregates recorded | ✅ latency, sources, invalid citations, mismatches, attribution, silence claims |
+| conversation diversity measured | ✅ 12.3 distinct conversations per question, 0 single-conversation answers |
+| outlier dominance checked | ✅ 14.7 % of slots against a 42.8 % corpus share — not dominant |
+| manual labels | ⏸ **all 18 pending the user** |
+| failure-case table | ⏸ awaiting those labels |
+| real eval data kept out of the repo | ✅ questions, results and the analysis script all under `data/real/` |
