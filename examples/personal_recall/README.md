@@ -156,6 +156,24 @@ Then open **<http://127.0.0.1:8000>**.
 Answers come from `recall.answer_question`, the same path the CLI prints from, so the page and the
 terminal cannot disagree about what was retrieved or cited.
 
+### Conversation names on the evidence cards
+
+A card header reads "我, 对方 · 2025-05-12", which is unambiguous inside one conversation and not
+across an account of 272. The name that fixes that is **not** in the export — WeFlow records no
+conversation field at all — and on a fresh `weflow-cli` install the only name it can offer is the
+talker id again, so the page shows no header rather than printing a wxid. Ask the exporter once and
+record what it knows:
+
+```bash
+python sync_conversation_labels.py --account data/real/account_full
+```
+
+It writes `conversation_labels.json` inside the account tree and prints **coverage** — how many
+conversations resolved, split direct/group — never a name. The page prefers that file and falls back
+to the tree's own listing when it is missing or empty, so nothing changes for an export that has no
+sidecar. Names are decoration only: they are not put into chunk text, not embedded, and not used to
+retrieve.
+
 ## 4. Audit a full export before trusting it
 
 Embedding a whole account is the slow step (272 conversations took ~15 minutes here), so check the
@@ -240,6 +258,7 @@ Known limits, all recorded with numbers in `PROJECT_STATUS.md`:
 | `recall.py` | product CLI: question → answer + evidence + caveats |
 | `web.py`, `webapp/` | the local web UI: the same answer, in a browser |
 | `export_account.py` | WeChat account → the export tree both front ends read |
+| `sync_conversation_labels.py` | exporter's contact names → the evidence-card headers |
 | `audit_account.py` | export tree → completeness and boundary report, no model needed |
 | `chat_import.py` | real export → canonical corpus |
 | `groundedness.py` | gold-free caveats shown by the product |

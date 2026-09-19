@@ -78,13 +78,18 @@ class ConversationDescriptor:
         carried a "display name" that was the raw talker. A guard of ``if display_name`` therefore
         passed for all of them and the web UI printed a group id where a name belongs. Synthetic
         fixtures never caught it because they always gave the two values different string constants.
+
+        The rule itself lives in one place, :func:`memory.labels.usable_name` — the exporter's contact
+        resolution and the labels sidecar apply exactly the same test, and a second copy of it here
+        is how the two would drift apart.
         """
-        name = self.display_name.strip()
-        if not name or name == self.conversation_id:
-            return False
-        # A chatroom's own id is the only thing that legitimately ends in the group suffix; a group
-        # a person named never does.
-        return GROUP_SUFFIX not in name
+        # Imported inside the property rather than at module scope: ``memory.labels`` imports
+        # ``GROUP_SUFFIX`` from this module, so a top-level import back would be a cycle between two
+        # modules that are both needed while the package loads. Deferring it keeps the dependency
+        # one-way at import time and costs a dict lookup per call on a path that is not hot.
+        from memory.labels import usable_name
+
+        return bool(usable_name(self.display_name, self.conversation_id))
 
     def as_dict(self) -> dict[str, Any]:
         return {

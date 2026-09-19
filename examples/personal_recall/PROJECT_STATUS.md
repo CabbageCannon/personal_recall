@@ -3127,3 +3127,137 @@ Both fixes have regression tests that fail without them.
 | the page actually looked at | ✅ desktop and 390 px, 0 overflow, cards readable |
 | real data still git-ignored | ✅ `data/real/` covers the export, logs, audit and screenshots |
 | real acceptance eval | ⏸ **pending user questions** |
+
+---
+
+# Phase 20.6 — Human-readable conversation names
+
+Phase 20.5 found that evidence cards had no conversation header at all. The cause was that
+`weflow-cli` returns `displayName` equal to `username` for every conversation, and the fix there
+stopped the page printing an internal id in its place. This phase set out to supply a real name.
+
+**Outcome: the resolution layer is built, tested and wired in, and it resolves 0 of the account's 272
+conversations — because this installation of `weflow-cli` exposes no human-readable name through any
+non-interactive command.** The cause is measured and stated below rather than papered over with a
+fallback.
+
+## What was investigated
+
+Every read command the CLI advertises was probed through the project's own runner (same scratch
+profile, same config handling), and the shape of each response recorded:
+
+| command | result |
+| ------- | ------ |
+| `sessions --json` | 272 conversations, **every** `displayName == username` |
+| `contacts --json` | 107 contacts, **every** `displayName == username` |
+| `messages <talker> --json` | `{success, talker, messages}` — no name field at all |
+| `capabilities` | documents `contacts --json` as the only contact source; no name-bearing alternative |
+| `config show` / raw config | `contactDbPath`, `contactKey`, `contactSalt` all unset |
+| `whitelist list` / `blacklist list` / `sns users` / `fav list` | no name-bearing listing |
+| `init --dry-run --json` | `interactiveRequired: true` — no per-database detail, and it reports it will write configuration |
+
+Two further experiments, both negative:
+
+* **Repointing `contactDbPath` at the on-disk contact databases** (`MicroMsg.db`, 30 MB;
+  `ChatRoomUser.db`) in a scratch profile changed nothing: still 107 contacts, still zero real names.
+  The `contacts` command does not appear to read that key on this version.
+* **The export envelope carries no name either.** A `{talker}_messages.json` is a bare array of
+  `content / createTime / isSend / localId / localType / parsedContent / rawContent / senderUsername /
+  serverId`. `senderUsername` is a wxid.
+
+The names exist on disk. `weflow-cli` does not surface them with this configuration, and the command
+that would configure it (`init`) requires an interactive terminal and writes the user's config — which
+this project never does. Parsing the databases directly was considered and rejected: it is out of
+bounds for this project by explicit rule, and it would be a second, unmaintained exporter.
+
+**So this is a configuration gap in the installed tool, not a design problem in the product.** The
+resolution layer is complete and will populate on the next `sync_conversation_labels.py` run after
+`weflow-cli init` is run once in a terminal.
+
+## What was built
+
+Decoupled end to end, so name enrichment never requires re-exporting messages (39.5 minutes) and never
+touches the 412 416-message tree:
+
+```
+weflow-cli contacts --json
+        ↓  exporter.list_contacts()          (the only module allowed to run weflow-cli)
+        ↓  memory.labels.parse_contact_listing()
+        ↓  resolve_conversation_labels()     precedence, per conversation kind
+        ↓  conversation_labels.json          local sidecar, in the git-ignored account tree
+        ↓  webapp.read_conversation_labels()
+        ↓  evidence card header
+```
+
+| file | role |
+| ---- | ---- |
+| `memory/labels.py` | **new** — the usable-name rule, the precedence tiers, the sidecar format |
+| `sync_conversation_labels.py` | **new** — contacts → sidecar, prints coverage and never a name |
+| `exporter.py` | `list_contacts()`, reusing the existing scratch-profile mechanism |
+| `webapp/app.py` | the sidecar is authoritative when it holds anything; the tree's own listing is the fallback |
+| `tests/test_labels.py` | **new** — 77 tests |
+
+### One rule, one place
+
+`usable_name(name, conversation_id)` returns the name when a person may read it, else `""`. It rejects
+empty/whitespace, a name equal to the conversation id, and anything containing `@chatroom`.
+`ConversationDescriptor.has_real_name` now **delegates to it** rather than holding a second copy of
+the same test — the two drifting apart is exactly how Phase 20.5's leak happened. It is applied on the
+way in (resolution) and on the way out (the sidecar reader), so a hand-edited sidecar cannot smuggle
+an id into a card.
+
+### Precedence
+
+```
+direct : remark → nickname / displayName → alias → (nothing)
+group  : the group's own name → (nothing)
+```
+
+Ordering is by **field kind**, not by the order a payload happens to list its keys; ties inside a kind
+break deterministically. A group is deliberately given no remark tier — the name a group shows is the
+name its members gave it. **A talker id is never a fallback in any tier**, for either kind.
+
+### Coverage, measured on the real account
+
+```
+conversations  : 272 (direct 136, group 136)
+contact records: 107
+labels resolved: 0 of 272
+  direct       : 0 resolved / 136
+  group        : 0 resolved / 136
+```
+
+The CLI prints exactly this, and a note naming the cause and the unlock. It prints no label, no talker
+and no wxid, so the output is safe to paste.
+
+## Verification
+
+* **The rule, against the real data shapes**: empty → `""`; whitespace → `""`; `displayName` equal to
+  the talker → `""`; a group id → `""`; a *different* group id → `""`; a real name → the name.
+* **The whole chain with synthetic names**, since no real one exists: a synthetic sidecar over a
+  synthetic tree resolves through the real `read_conversation_labels` and yields names, with no value
+  equal to its own key and no `@chatroom` in any label.
+* **Degradation**: with no sidecar, the reader returns `{}` — byte-for-byte the pre-20.6 behaviour, so
+  every existing export keeps working.
+* **The user's real `~/.weflow-cli/config.json` is untouched**: SHA-256 `9b61ad15b461ef09` before and
+  after the sync run.
+* **The sidecar is git-ignored** (`data/real/`), and `shard_manifest.json` still carries counts only.
+* **No identifier reaches the browser**: a test walks every nested **value** in the API response (key
+  names alone are how Phase 20.5's leak survived its first check).
+
+**Tests: 532 pass** (455 before this phase, +77). No retrieval code was touched: no change to
+embedding, FAISS, hybrid search, RRF, `k`, hybrid pool, chunking, prompts or workflow, and no name is
+injected into chunk text.
+
+## Known limits
+
+* **No real name has ever resolved on this installation.** The resolution path is proven against
+  synthetic payloads shaped like the measured responses, not against a live success.
+* **The `remark` / `nickname` key spellings are defensive, not measured.** `username` and `displayName`
+  are the measured keys; the others are spellings already used elsewhere in this project. If the
+  unlock emits a different spelling, adding it is a one-line change to `_KEY_KINDS`, and an unknown
+  field is ignored rather than fatal.
+* **A hand-edited sidecar can disagree with `contacts`.** The sidecar is authoritative by design —
+  the alternative was a card whose header depends on which source happened to know that conversation.
+* **Duplicate names are allowed and not disambiguated.** Two conversations may both read "小王": a
+  label is not an identity, and the frontend is never shown a stable id to tell them apart.

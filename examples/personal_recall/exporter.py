@@ -7,6 +7,11 @@ and does not call a model. Parsing starts at ``memory.weflow`` and is driven by 
 identity comes from ``memory.conversations``. Keeping the sensitive path this narrow is the point: a
 module that only knows how to invoke an external program is a module that cannot leak a message.
 
+One command does not fit the (shard, conversation) shape — ``contacts --json``, which answers with
+names rather than talkers — and it lives here anyway, because **no other module may run
+``weflow-cli``**: :func:`list_contacts`. It touches no chat content either; it asks the exporter what
+it knows, and ``memory.labels`` decides which of those answers is a name.
+
 How a caller drives it
 ----------------------
 
@@ -97,6 +102,7 @@ from memory.conversations import (
     parse_session_listing,
     shard_stem,
 )
+from memory.labels import ContactRecord, parse_contact_listing
 from memory.shards import discover_message_shards
 
 __all__ = [
@@ -107,6 +113,7 @@ __all__ = [
     "export_account_tree",
     "export_conversation",
     "export_shard",
+    "list_contacts",
     "list_conversations",
     "list_conversations_across_shards",
     "list_shard_database_paths",
@@ -486,6 +493,53 @@ def list_conversations(
                 f"{_describe_failure(completed, payload)}"
             )
         return parse_session_listing(payload)
+    finally:
+        _discard_scratch_profile(scratch)
+
+
+def list_contacts(
+    *,
+    runner: Runner | None = None,
+    scratch_root: Path | None = None,
+) -> tuple[ContactRecord, ...]:
+    """Every name the exporter can resolve for this account's contacts.
+
+    ``weflow-cli contacts --json`` is the only command that answers with *names* rather than talkers,
+    and it is the input a human-readable conversation label is resolved from. It runs inside the same
+    scratch profile as every other call here — the same ``USERPROFILE`` switch, the same cleanup, the
+    same redaction — even though contacts do not depend on which shard is selected: a second way to
+    invoke the CLI is exactly the thing this module exists to prevent.
+
+    Two consequences of reusing that mechanism, both deliberate: the config must select a database
+    (``_prepare_scratch_profile`` refuses a config that names none, because a run against nothing
+    would look like an account with no names), and each call pays one config copy, which is the price
+    of never writing the user's real ``~/.weflow-cli``.
+
+    Raises :class:`ListingFailed` when the CLI produced no usable listing — the caller must be able to
+    tell "there are no names" from "we could not ask". A successful run with no resolved names is a
+    legitimate, common result on the tested version: it echoes each entry's own id back as that
+    entry's display name, which :func:`memory.labels.parse_contact_listing` records as an offer and
+    :func:`memory.labels.usable_name` then rejects. The shape of a listing entry is parsed in exactly
+    one place, and it is not this module.
+    """
+    runner = runner or run_subprocess
+
+    scratch: Path | None = None
+    try:
+        scratch, adjusted = _prepare_scratch_profile(None, scratch_root)
+        completed = runner(["contacts", "--json"], _export_environment(scratch))
+        payload = _stdout_json(completed)
+        if payload is None:
+            raise ListingFailed(
+                "weflow-cli contacts --json produced no JSON (exit "
+                f"{getattr(completed, 'returncode', '?')}); {_describe_failure(completed, None)}"
+            )
+        if isinstance(payload, Mapping) and payload.get("success") is False:
+            raise ListingFailed(
+                f"weflow-cli contacts failed ({', '.join(adjusted) or 'no key repointed'}); "
+                f"{_describe_failure(completed, payload)}"
+            )
+        return parse_contact_listing(payload)
     finally:
         _discard_scratch_profile(scratch)
 

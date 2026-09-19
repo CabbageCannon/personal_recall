@@ -63,25 +63,45 @@ def read_conversation_labels(account_dir: Path) -> dict[str, str]:
     A card says "我, 对方 · 2025-05-12", which is unambiguous inside one conversation and ambiguous
     across an account of forty. The name is decoration and never a key (see
     ``memory.conversations``), so this is best-effort by design: an export tree with no
-    ``sessions.json`` still answers questions, just without the header.
+    ``sessions.json`` and no sidecar still answers questions, just without the header.
 
-    Conversations with no recorded display name are left out rather than labelled with their talker:
-    a wxid is an internal identifier, and the UI has no business printing one.
+    Conversations with no real name are left out rather than labelled with their talker: a wxid is an
+    internal identifier, and the UI has no business printing one.
 
-    The test is ``has_real_name``, not "is the field non-empty". On a real account the exporter's
-    ``sessions --json`` listing gives every conversation a ``displayName`` equal to its ``username``,
-    so a truthiness guard passes for all of them and the page prints a group id where a name belongs.
+    Two sources, in order. The **sidecar** (``<account>/conversation_labels.json``, written by
+    ``sync_conversation_labels.py``) is authoritative when it holds anything, because it is the one
+    that asked ``weflow-cli`` for names; when it is absent, empty or unreadable the tree's own
+    ``sessions.json`` listing is used, exactly as before Phase 20.6. Both paths go through the same
+    rule — ``memory.labels.usable_name`` — and neither ever yields a talker id: on a real account the
+    exporter's listing gives every conversation a ``displayName`` equal to its ``username``, so a
+    truthiness guard would pass for all of them and the page would print a group id where a name
+    belongs.
+
+    Merging the two sources per conversation was considered and rejected: it would make a card's
+    header depend on which source happened to know that conversation, so the same page would explain
+    itself two different ways depending on a file's history. One source wins, and it is the one that
+    was written to be authoritative.
     """
     from memory import load_account_directory
+    from memory.labels import (
+        CONVERSATION_LABEL_FILENAME,
+        read_label_sidecar,
+        resolve_conversation_labels,
+    )
+
+    sidecar = read_label_sidecar(Path(account_dir) / CONVERSATION_LABEL_FILENAME)
+    if sidecar:
+        return {talker: label.label for talker, label in sidecar.items()}
 
     try:
         layout = load_account_directory(account_dir)
     except (OSError, ValueError):
         return {}
+    # The descriptors resolve through the same precedence as the sidecar did; with no contact records
+    # the only offer is each conversation's own display name.
     return {
-        descriptor.conversation_id: descriptor.display_name
-        for descriptor in layout.descriptors
-        if descriptor.has_real_name
+        talker: label.label
+        for talker, label in resolve_conversation_labels(layout.descriptors, ()).items()
     }
 
 
