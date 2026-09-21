@@ -3677,3 +3677,59 @@ explicit and falsifiable rather than vague.
 | evidence-level diff | ✅ all evidence turned over; silence claims 14 → 11, citations still perfect |
 | question set unchanged | ✅ verified byte-identical to Phase 20.7's |
 | real data kept out of the repo | ✅ questions, results, diffs and the analysis scripts all under `data/real/` |
+
+---
+
+# Phase 20.8C — Controlled re-eval of the sender change
+
+The controlled design is three runs over the same 18 questions:
+
+| run | corpus | speaker rendering |
+| --- | ------ | ----------------- |
+| **OLD** | PC-history (272 conversations) | pre-20.8B |
+| **A** | migrated (281 conversations) | pre-20.8B |
+| **B** | migrated | post-20.8B |
+
+OLD → A isolates the **data-completeness** effect (recorded in Phase 20.8A). A → B isolates the
+**sender-identity** effect, and this is the record of it.
+
+## Targeted speaker subset first (q07–q09)
+
+The three `speaker_attribution` questions are where a sender-collapse defect would show, so they run
+before anything else, on their own index build.
+
+```
+questions                  A (old code)   B (new sender)
+answers changed textually           —          3 / 3
+evidence changed                    —          0 / 3      <- zero sources gained, zero lost
+distinct conversations           9.0           9.0
+silence claims                      2             1
+attribution flags                   3             0
+citation mismatches                 0             0
+invalid citations                   0             0
+mean latency ms                 89 133        61 974
+```
+
+**Not one retrieved source differs.** For all three questions the evidence is identical — the same
+sources in the same ranks, the same number of distinct conversations. The answers differ, and so do
+the caveat counts, but those sit on top of byte-identical evidence: they are generation
+nondeterminism, which this project has measured before and never claims otherwise.
+
+That was predicted, and the prediction has a mechanism: Phase 20.8B swept all 589 exports and found
+562 naming the conversation rather than a sender and **zero** naming a sender, so the guard keeps every
+real group rendering `对方` — unchanged from before. The same conclusion was reached independently and
+more cheaply by rendering 628 996 lines of the corpus through both code versions and comparing digests:
+identical.
+
+The value of this run is that it turned "argued from a hash" into "measured end to end through the
+product path". A change that touches how every message is rendered, and moves nothing, is worth
+confirming rather than assuming — and the falsifiable form of the claim is in the record now: **if a
+single source had differed, the invariance claim would have been wrong.**
+
+## What this means for the phase's own goal
+
+Phase 20.8B set out to stop group members collapsing into one `对方`. It did the part that is possible
+— the model is now correct, the identity is preserved as data, and the conversation's own id can never
+be mistaken for a member — but **on this exporter no group gains attribution**, because the exported
+data does not contain a sender identity to begin with. That is the honest result, and the A→B
+comparison is what rules out the possibility that it was quietly working anyway.
