@@ -8,25 +8,62 @@ evidence cannot say who said what and a question of the form "who did X" has no 
 The acceptance run confirmed it — asked who did something, the answers reported that the record only
 labels everyone "对方".
 
-Three things are separated here, and only the third is a display string (see ``memory.events``):
+Four things are separated here, and only the last is a display string (see ``memory.events``):
 
 * **role** — ``speaker_role``, ``"self"`` or ``"other"``. What ``isSend`` actually means.
 * **identity** — ``speaker_id``, the exporter's ``senderUsername``. Stable, kept as data, never shown.
+* **display** — ``speaker_display``, the exporter's optional ``senderDisplay``. A *candidate* name.
 * **label** — ``sender_name``, what ``MemoryEvent.line`` renders. The only thing this module changes.
 
-The rule:
+The rule, in order:
 
 * **self** -> ``我``, always, in both kinds of conversation. The speaker-attribution safety logic in the
   prompt and in ``attribution_screen.py`` matches this exact string, so substituting anything else —
   a wxid, a display name, a pseudonym — would silently disable it.
 * **direct conversation, other** -> ``对方``, unchanged. Role alone distinguishes the two speakers, and
   keeping the string identical is what makes this phase a strict no-op for every already-evaluated
-  direct corpus.
-* **group conversation, other** -> a deterministic pseudonym, assigned per conversation, so members are
-  distinguishable: ``成员A``, ``成员B``, … by **first appearance in that conversation's chronological
-  event order**, continuing ``…Y, Z, AA, AB, …`` (Excel-column style). Never a hash, never a random
-  number, never the raw id: a label derived from the id would be the identity spelled again, and a label
-  that changed between two runs would make the evidence unreproducible.
+  direct corpus. A direct chat's *conversation* name is a different concern (``memory.conversations``,
+  ``memory.labels``) and is not decided here.
+* **group conversation, other** -> the member's own label, resolved in this order:
+
+  1. a **usable** ``speaker_display`` — the human name the exporter offered;
+  2. otherwise a deterministic pseudonym, ``成员A``, ``成员B``, … (Excel-column style, continuing
+     ``…Y, Z, AA, AB, …``);
+  3. and ``对方`` when the message carries no usable **identity** at all, because then the export does
+     not say who spoke and no label may be invented for it.
+
+  "Usable" is not ``if senderDisplay:``. It is :func:`memory.labels.usable_name`, the project's single
+  canonical "is this a name or the identity spelled again" rule, which rejects empty/whitespace, a
+  value equal to the conversation id, a value equal to the speaker's own id, and anything containing a
+  chatroom suffix. That rule lives **in** ``memory.labels`` and is only *called* from here; this module
+  contributes the precedence around it and nothing else. The consequence is the property that matters:
+  a raw internal identity can never reach the model just because the field carrying it is called
+  "Display".
+
+Three things this pass has to get right, each of them a way the naive version is wrong
+------------------------------------------------------------------------------------------
+
+**(a) Resolve across the whole conversation, never per event.** One member may carry a display on some
+messages and none on others. Resolved per event, that member would render as ``张三`` on one line and
+``成员A`` on the next — one person wearing two labels inside one conversation, which is the collapse
+this phase removes, re-introduced one message at a time. So the pass first builds one
+``speaker_id -> label`` map for the entire stream, then applies it to every event.
+
+**(b) Pseudonyms must not drift.** The ``成员A/B/C…`` sequence is assigned by first appearance over
+**all** group non-self senders, whether or not they end up using a display. Numbering only the senders
+that lack a display would mean that adding a name to one member renumbers everybody else — the same
+corpus rendering differently between two runs, and a citation that cannot be reproduced.
+
+**(c) Duplicate displays must stay distinguishable.** Two different ids can both resolve to the same
+human name; a nickname is not unique and the exporter resolves it per contact. Rendering ``小王`` twice
+is an identity collapse — the exact defect this phase exists to remove — so when one conversation has
+two members under one candidate name, each is qualified with the pseudonym it already had:
+``小王（成员A）``, ``小王（成员B）``. The qualifier is a pseudonym and never a wxid, a hash or a chatroom
+id, so the disambiguation is deterministic and adds no identity of its own.
+
+And a sender that somehow carries several displays is resolved deterministically too: the most frequent
+one wins, ties broken by first appearance. The measured export has zero such conflicts, but a rule that
+depends on that staying true is not a rule.
 
 Where it is applied, and why that placement is the subtle part
 -------------------------------------------------------------
@@ -53,10 +90,11 @@ the reranker, the workflow and the prompt are all exactly as evaluated.
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Sequence
+from typing import Mapping, Sequence
 
 from .conversations import GROUP, conversation_type_of
 from .events import OTHER_ROLE, SELF_ROLE, MemoryEvent
+from .labels import usable_name
 from .weflow import OTHER, SELF
 
 __all__ = [
@@ -89,6 +127,106 @@ def column_label(index: int) -> str:
             return letters
 
 
+def _identity_of(event: MemoryEvent, conversation_id: str) -> str:
+    """The sender's identity, or ``""`` when the export did not state one.
+
+    Two things are not an identity:
+
+    * an empty ``senderUsername`` — the export does not say who spoke, and two such messages cannot be
+      shown to be the same person or different people, so giving them member labels would either invent
+      a distinction or assert an identity the export does not contain;
+    * the **conversation's own id**. Measured on this project's older export: 562 of 589 files named the
+      conversation as the sender and not one named a sender, so treating that field as an identity
+      stamps a single ``成员A`` across a whole group — "exactly one other person said all of this",
+      which reads as a fact rather than as an absence. The patched exporter no longer does this, and the
+      guard stays: it costs one comparison and it is the difference between an honest ``对方`` and an
+      invented member the day some exporter writes the talker into the sender field again.
+
+    Same family of rule as ``labels.usable_name`` — the identity is never a name — but this one is
+    about the *identity field*, so it lives here next to the precedence it feeds.
+    """
+    identity = str(event.speaker_id or "").strip()
+    if not identity or identity == conversation_id:
+        return ""
+    return identity
+
+
+def _member_labels(events: Sequence[MemoryEvent], conversation_id: str) -> dict[str, str]:
+    """``speaker_id -> rendered label`` for one group conversation's members.
+
+    Built over the **whole stream** in one pass, which is the point (see the module docstring, (a)):
+    the map is keyed by identity, so a member who carries a display on one message and none on another
+    is one person with one label everywhere. Nothing here is decided per event.
+
+    Events without a usable identity are not members and are absent from the result; the caller renders
+    those ``对方``. The candidate name is judged by ``labels.usable_name``, passed the speaker's own id
+    as the identity it must not merely repeat.
+    """
+    order: list[str] = []
+    counts: dict[str, dict[str, int]] = {}
+    first_seen: dict[str, dict[str, int]] = {}
+
+    for position, event in enumerate(events):
+        if event.speaker_role != OTHER_ROLE:
+            continue
+        identity = _identity_of(event, conversation_id)
+        if not identity:
+            continue
+        if identity not in counts:
+            # First appearance over *every* member, named or not: pseudonyms are assigned here and
+            # consumed later, so a member gaining a display never renumbers the others (b).
+            order.append(identity)
+            counts[identity] = {}
+            first_seen[identity] = {}
+        display = usable_name(event.speaker_display, conversation_id, identity)
+        if display:
+            counts[identity][display] = counts[identity].get(display, 0) + 1
+            first_seen[identity].setdefault(display, position)
+
+    pseudonyms = {
+        identity: f"{SENDER_LABEL_PREFIX}{column_label(index)}" for index, identity in enumerate(order)
+    }
+    chosen: dict[str, str] = {}
+    for identity in order:
+        offered = counts[identity]
+        if not offered:
+            chosen[identity] = pseudonyms[identity]
+            continue
+        # Most frequent, ties broken by first appearance — deterministic on the stream, never on dict
+        # iteration order, and reproducible from the export alone.
+        chosen[identity] = min(offered, key=lambda name: (-offered[name], first_seen[identity][name]))
+
+    return _disambiguated(chosen, pseudonyms)
+
+
+def _disambiguated(
+    labels: Mapping[str, str],
+    pseudonyms: Mapping[str, str],
+) -> dict[str, str]:
+    """Qualify any label two members of one conversation would otherwise share (c).
+
+    A name is not unique and a group is not a namespace: the exporter resolves ``senderDisplay``
+    per contact, so two different ids can both offer ``小王``. Rendering it for both is exactly the
+    collapse this phase exists to remove, and picking one of them to keep would be worse — it would
+    silently attribute one person's words to another. So both keep the name and gain the pseudonym they
+    already had: ``小王（成员A）`` and ``小王（成员B）``.
+
+    Both halves are already in the record: the name came from the export, the qualifier from the
+    conversation's own member order. No wxid, no hash, no chatroom id — a disambiguator that carried an
+    identity would defeat the field it is being appended to.
+
+    The rule is stated over the resulting labels rather than over displays, so it covers every way two
+    members could end up rendering the same string, not only the two-displays-one-name case.
+    """
+    shared: dict[str, int] = {}
+    for label in labels.values():
+        shared[label] = shared.get(label, 0) + 1
+    return {
+        identity: f"{label}（{pseudonyms[identity]}）" if shared[label] > 1 else label
+        for identity, label in labels.items()
+    }
+
+
 def assign_sender_labels(
     events: Sequence[MemoryEvent],
     conversation_id: str,
@@ -96,39 +234,23 @@ def assign_sender_labels(
     """Return ``events`` with each ``sender_name`` set to the label its conversation should show.
 
     A pure function of ``(events, conversation_id)``: the same stream always produces the same labels,
-    which is what lets a citation be reproduced from the export alone.
+    which is what lets a citation be reproduced from the export alone. It reads ``speaker_role``,
+    ``speaker_id`` and ``speaker_display`` and writes only ``sender_name``, so applying it twice is the
+    same as applying it once.
 
     ``events`` is assumed to be in the conversation's chronological order and is **not** re-sorted —
     "first appearance" means first in the order given, and every caller feeds a stream that
     ``parse_weflow_events`` or ``merge_shard_events`` has already ordered. Re-sorting here would be a
     second opinion about chronology, and the one thing the merge guarantees is that there is only one.
 
-    Only two things are renamed: a declared ``self`` speaker, and an ``other`` speaker **in a group**.
-    Everything else is returned untouched, which has three consequences worth stating:
-
-    * a **direct** conversation keeps ``对方`` exactly as it renders today — the role is enough to
-      distinguish its two speakers, and the evaluated corpora must keep rendering byte for byte what
-      they rendered;
-    * a stream whose source declares **no** role at all — the plain-text adapter names its speakers
-      directly — is a strict no-op, so this function cannot corrupt a corpus it was never meant for
-      even if a future caller wires it in by mistake;
-    * in a group, an ``other``-speaker whose export carried **no** ``senderUsername`` — **or** whose
-      ``senderUsername`` is the conversation's own id — keeps ``对方``. Two such messages cannot be
-      shown to be the same person or different people, so giving them member labels would either
-      invent a distinction or assert an identity the export does not contain. ``对方`` is the honest
-      answer, and it can never collide with an assigned ``成员X`` label.
-
-      The second half of that rule is not hypothetical; it is the state of this project's own data.
-      Every export in a real 589-file account was swept: **562 carry a ``senderUsername`` equal to the
-      talker**, none carries a value that differs, and none has more than one distinct non-self
-      sender — the exporter writes the *conversation* into the sender field. Without this guard every
-      group in a real account would render as one ``成员A``, asserting that a single other person said
-      everything. So on this exporter the fix preserves the honest ``对方`` rather than gaining
-      attribution, and the model above is what makes that a one-line change the day a real sender id
-      arrives.
+    The precedence itself is described at the top of this module; what is worth restating is what is
+    *not* renamed. A stream whose source declares no role at all — the plain-text adapter names its
+    speakers directly — is a strict no-op, so this function cannot corrupt a corpus it was never meant
+    for even if a future caller wires it in by mistake.
     """
     is_group = conversation_type_of(conversation_id) == GROUP
-    assigned: dict[str, str] = {}
+    # Resolved once for the whole conversation, before a single event is renamed (a).
+    members = _member_labels(events, conversation_id) if is_group else {}
     labelled: list[MemoryEvent] = []
 
     for event in events:
@@ -137,24 +259,12 @@ def assign_sender_labels(
             # ``attribution_screen.py`` both key off this literal string.
             name = SELF
         elif is_group and event.speaker_role == OTHER_ROLE:
-            identity = str(event.speaker_id or "").strip()
-            if not identity or identity == conversation_id:
-                # The conversation's own id is not a sender. Measured on this project's real export:
-                # 562 of 589 exports carry ``senderUsername == talker`` and **not one** carries a
-                # distinct sender id, so the exporter is writing the conversation into the sender
-                # field. Treating that as an identity would stamp every member of every group with the
-                # same ``成员A`` — an assertion that exactly one other person spoke, which is worse
-                # than the ``对方`` it replaces because it reads as a fact rather than as an absence.
-                # Same family of rule as ``labels.usable_name``: the identity is never a name.
-                name = OTHER
-            else:
-                existing = assigned.get(identity)
-                if existing is None:
-                    # Assigned on first appearance, and only ever here, so one id maps to one label
-                    # for the whole conversation and no two ids can share one.
-                    existing = f"{SENDER_LABEL_PREFIX}{column_label(len(assigned))}"
-                    assigned[identity] = existing
-                name = existing
+            # ``对方`` when the export states no identity: absent from the map means there was nothing
+            # to key a name on, not that the member was forgotten.
+            name = members.get(_identity_of(event, conversation_id), OTHER)
+        elif event.speaker_role == OTHER_ROLE:
+            # A direct conversation has one other side by definition, whatever ids its messages carry.
+            name = OTHER
         else:
             name = event.sender_name
 

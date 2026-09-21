@@ -38,6 +38,9 @@ Two decisions worth stating explicitly:
   for a direct chat, and ``memory.senders.assign_sender_labels`` replaces it per conversation for a
   group, where one role covers many people. The raw ``senderUsername`` also stays in metadata, because
   that is where the exporter's own fields live.
+* **A display name is a candidate, not a fact.** ``senderDisplay`` is read into
+  :attr:`MemoryEvent.speaker_display` and never into ``speaker_id``; the adapter does not decide
+  whether it is readable, because that is one rule and it lives in ``memory.labels.usable_name``.
 * **Body text is never guessed.** ``parsedContent`` is preferred over ``content`` over ``rawContent``
   because the exporter's own parse is the most likely to be clean. A body that is raw markup (multi-KB
   ``<msg><emoji .../></msg>`` payloads are real) is **replaced by a short placeholder** so internal
@@ -66,6 +69,14 @@ OTHER = "对方"
 
 #: Kept out of every rendered string: the identity of the speaker, not their name.
 SENDER_ID_FIELD = "senderUsername"
+
+#: The exporter's optional human-readable name for the speaker. A **candidate**, not a name and not an
+#: identity: it is carried on :attr:`~memory.events.MemoryEvent.speaker_display` so that
+#: ``memory.senders`` can promote it to a rendered label once ``memory.labels.usable_name`` agrees it
+#: is one. It is deliberately never assigned to :attr:`~memory.events.MemoryEvent.speaker_id` — a
+#: field called "Display" may still be an identity spelled again, and promoting one silently would
+#: put a wxid in front of the model through the field that exists to keep it out.
+SENDER_DISPLAY_FIELD = "senderDisplay"
 
 #: Body fields in preference order (the exporter's parse first, the raw payload last).
 BODY_FIELDS: tuple[str, ...] = ("parsedContent", "content", "rawContent")
@@ -119,6 +130,7 @@ METADATA_FIELDS: tuple[str, ...] = (
     "localType",
     "messageType",
     "senderUsername",
+    SENDER_DISPLAY_FIELD,
     "isSend",
     "createTime",
 )
@@ -279,6 +291,10 @@ def parse_weflow_events(
         # ``memory.labels.usable_name`` exists to prevent one layer up.
         raw_identity = entry.get(SENDER_ID_FIELD)
         speaker_id = str(raw_identity).strip() if raw_identity not in (None, "") else ""
+        # A second, independent field. It is read into ``speaker_display`` and nowhere else: the one
+        # thing this adapter must never do is let the presence of a display turn into an identity.
+        raw_display = entry.get(SENDER_DISPLAY_FIELD)
+        speaker_display = str(raw_display).strip() if raw_display not in (None, "") else ""
 
         event_id = build_event_id(
             conversation_id, entry.get("serverId"), entry.get("localId"), position
@@ -312,6 +328,7 @@ def parse_weflow_events(
                 metadata=metadata,
                 speaker_role=speaker_role,
                 speaker_id=speaker_id,
+                speaker_display=speaker_display,
             )
         )
 

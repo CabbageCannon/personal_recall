@@ -37,13 +37,18 @@ OTHER_ROLE = "other"
 class MemoryEvent:
     """One atomic chat message — the citation unit of the recall engine.
 
-    Three speaker fields, deliberately separate, because one string cannot carry all three facts:
+    Four speaker fields, deliberately separate, because one string cannot carry all of these facts:
 
     * :attr:`speaker_role` — ``"self"``/``"other"``. What the export *says* about who spoke.
     * :attr:`speaker_id` — the stable identity (WeFlow's ``senderUsername``). **Data, never a
       label**: it must not reach a prompt, a response, a log or a rendered line.
+    * :attr:`speaker_display` — an optional human-readable *candidate* for the speaker's name, when
+      the source offers one (WeFlow's ``senderDisplay``). A candidate and not a name: whether it may
+      be rendered is decided by one rule (:func:`memory.labels.usable_name`), because a field called
+      "Display" is not automatically readable — the same exporter's ``displayName`` was measured
+      equal to the raw conversation id for every conversation of a real account.
     * :attr:`sender_name` — the display label that :attr:`line` renders, i.e. everything the LLM and
-      the evidence card ever see. The only one of the three that is allowed to be a string a person
+      the evidence card ever see. The only one of the four that is allowed to be a string a person
       reads, and the only one ``memory.senders`` rewrites.
     """
 
@@ -62,6 +67,13 @@ class MemoryEvent:
     #: The speaker's stable identity, when the source provides one. Kept out of every rendered string
     #: — a label derived from this would be the identity spelled again (see ``memory.senders``).
     speaker_id: str = ""
+    #: The speaker's human-readable name *candidate*, when the source offers one (WeFlow's
+    #: ``senderDisplay``). Empty for every source that offers no such field — the plain-text adapter
+    #: names its speakers directly and has no candidate to declare. Deliberately a separate field
+    #: from :attr:`speaker_id` and never assignable to it: the candidate is whatever the export
+    #: printed, including an identity in disguise, and only ``memory.labels.usable_name`` may promote
+    #: it to a rendered label.
+    speaker_display: str = ""
 
     @property
     def line(self) -> str:

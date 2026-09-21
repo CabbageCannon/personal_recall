@@ -137,26 +137,38 @@ GROUP_TIERS: tuple[tuple[str, ...], ...] = ((DISPLAY_NAME,),)
 # --- the one rule ------------------------------------------------------------------------------
 
 
-def usable_name(name: Any, conversation_id: Any) -> str:
+def usable_name(name: Any, conversation_id: Any, identity: Any = "") -> str:
     """``name`` when it is a label a person may read, otherwise ``""``.
 
-    The single canonical rule, used by three things that must agree: ``ConversationDescriptor.
-    has_real_name``, the resolver below, and the sidecar reader. A name is rejected when it is
+    The single canonical rule, used by four things that must agree: ``ConversationDescriptor.
+    has_real_name``, the resolver below, the sidecar reader, and ``memory.senders`` (which passes a
+    speaker's own id as ``identity`` when judging a ``senderDisplay``). A name is rejected when it is
 
     * empty or only whitespace — there is nothing to show;
     * equal to the conversation id — the identity spelled again, which is what the tested
       ``weflow-cli`` emits for every conversation it cannot resolve a remark or nickname for;
+    * equal to ``identity``, when one is given — the same rejection applied to a **speaker** rather
+      than a conversation. ``senderUsername`` is an identity wherever it appears, so a display field
+      that merely repeats it is not a name either, and rendering it would smuggle the raw id into the
+      prompt through the one field whose name promises it will not be;
     * anything containing ``@chatroom`` — a group id is an identifier even when it is spelled
       differently from the conversation it labels, and a group a person named never ends in it.
 
     A rejected name returns ``""``, never ``None`` and never the id: "no label" has to be one value
     that every caller can test with ``if``.
+
+    This is the *only* place any of those four tests is written. ``memory.senders`` adds a precedence
+    rule on top — which candidate wins, and what a member with no usable candidate is called — but no
+    second copy of "is this a name": a second copy is how the two would drift apart.
     """
     text = str(name or "").strip()
     if not text:
         return ""
-    identity = str(conversation_id or "").strip()
-    if identity and text == identity:
+    conversation = str(conversation_id or "").strip()
+    if conversation and text == conversation:
+        return ""
+    speaker = str(identity or "").strip()
+    if speaker and text == speaker:
         return ""
     if GROUP_SUFFIX in text:
         return ""

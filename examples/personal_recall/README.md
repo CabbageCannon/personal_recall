@@ -50,10 +50,12 @@ Two properties matter for correctness:
 
 * **`isSend` decides the speaker**: `1` becomes `我`. The speaker-attribution safety logic depends on
   the literal `"我"`, so a wxid or display name is *never* substituted for it. In a direct chat the
-  other side is `对方`; in a **group** each member gets a deterministic pseudonym instead — `成员A`,
-  `成员B`, … by first appearance — because one `对方` for everybody made a group's evidence
-  unattributable. The real `senderUsername` is kept as data (`speaker_id`, and in metadata) and is
-  never rendered.
+  other side is `对方`; in a **group** each member is named from the exporter's `senderDisplay` when
+  that field is a real name, and otherwise gets a deterministic pseudonym — `成员A`, `成员B`, … by
+  first appearance — because one `对方` for everybody made a group's evidence unattributable. What
+  counts as "a real name" is one rule (`memory.labels.usable_name`), so a `senderDisplay` that merely
+  repeats the sender id, the conversation id or a group suffix is rejected instead of rendered. The
+  real `senderUsername` is kept as data (`speaker_id`, and in metadata) and is never rendered.
 * **Internal payloads never reach retrieval.** Real exports carry multi-KB `<msg><emoji …/></msg>`
   blobs; these are replaced by a short placeholder (`[表情]`, `[图片]`, …) so the message keeps its
   place on the timeline without polluting the embedding corpus.
@@ -161,7 +163,7 @@ terminal cannot disagree about what was retrieved or cited.
 
 ### Conversation names on the evidence cards
 
-A card header reads "我, 对方 · 2025-05-12" in a direct chat, or "我, 成员A, 成员B · 2025-05-12" in a
+A card header reads "我, 对方 · 2025-05-12" in a direct chat, or "我, 张三, 李四 · 2025-05-12" in a
 group. Unambiguous inside one conversation, and not across an account of 272. The name that fixes that is **not** in the export — WeFlow records no
 conversation field at all — and on a fresh `weflow-cli` install the only name it can offer is the
 talker id again, so the page shows no header rather than printing a wxid. Ask the exporter once and
