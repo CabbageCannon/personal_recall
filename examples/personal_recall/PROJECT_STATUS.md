@@ -3733,3 +3733,45 @@ Phase 20.8B set out to stop group members collapsing into one `对方`. It did t
 be mistaken for a member — but **on this exporter no group gains attribution**, because the exported
 data does not contain a sender identity to begin with. That is the honest result, and the A→B
 comparison is what rules out the possibility that it was quietly working anyway.
+
+## Full 18-question B run
+
+The targeted subset suggested the invariance; the full set confirms it.
+
+```
+questions                      A (old code)   B (new sender)
+answers changed textually             —            18 / 18
+evidence changed                      —             0 / 18      <- zero sources gained, zero lost
+distinct conversations              11.3            11.3
+silence claims                        11              10
+attribution flags                      3               0
+citation mismatches                    0               0
+invalid citations                      0               0
+mean latency ms                   91 830          80 155
+```
+
+**Not one of the 360 retrieved sources differs, on any of the 18 questions.** Every `conversations`
+column reads `N -> N` with the same N. The answers differ in every case and the caveat counts move
+slightly in both directions (three silence claims resolved, one introduced; three attribution flags to
+zero) — all of it generation nondeterminism on byte-identical evidence, which is why this project does
+not treat a changed answer as a result on its own.
+
+## The controlled comparison, complete
+
+| comparison | isolates | outcome |
+| ---------- | -------- | ------- |
+| OLD → A | data completeness | every answer and every evidence set changed; silence claims 14 → 11; coverage extended 5.7 years |
+| A → B | sender identity | **nothing moved** — 0/18 evidence changes, in both directions |
+
+So the phase's two questions have measured answers. The migration was worth two hours of export and
+four index builds: it resolved two silence claims outright and replaced the evidence behind every
+question with evidence drawn from a corpus 3.9× larger and 5.7 years longer. The sender-identity
+change, by contrast, moves nothing on this exporter — and now that is a measurement rather than an
+expectation.
+
+Both results are negative-leaning and both are useful. The first says the earlier acceptance run was
+partly measuring a missing corpus. The second says the remaining failures are *not* a rendering
+artifact: q07's "the record only labels them 对方" is not something a better label can fix, because the
+exported data does not contain a member identity in the first place. Whatever those failures are made
+of, they survive both corrections — which narrows the search for Phase 21 to retrieval and generation
+rather than data plumbing.
