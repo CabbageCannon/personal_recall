@@ -3539,3 +3539,141 @@ measuring rather than assuming.
 | plain-text path untouched | ✅ `assign_sender_labels` is a no-op on a role-less stream |
 | retrieval logic untouched | ✅ no change to embedder, index, search, chunking or prompt |
 | `init` claim corrected | ✅ sync layer states the measured fact, not the hypothesis |
+
+---
+
+# Phase 20.8A — Full-history refresh after the phone migration
+
+The user migrated their complete phone chat history into the PC WeChat. Everything measured in
+Phase 20.5 and evaluated in Phase 20.7 was therefore a *partial* view of their past, which put a
+standing question mark over every retrieval miss and silence claim in those results. This phase
+established how much history arrived, refreshed the baseline, and ran the same acceptance eval again
+on **completely unchanged code** so that any movement could be attributed to the data alone.
+
+Aggregates only throughout: counts, shard names, date ranges and durations. No question, answer,
+contact, group name or identifier appears below.
+
+## First: did the migration actually land?
+
+The sanity check the phase opens with, and it mattered — a full export costs two hours:
+
+| | Phase 20.5 | Phase 20.8A |
+| --- | --- | --- |
+| shards | 3 | **11** (eight new: `MSG3`–`MSG10`) |
+| `MSG0` / `MSG1` / `MSG2` size | 180 / 240 / 210 MB | **360 / 690 / 270 MB** |
+
+The active database had plainly changed, so the export proceeded. The dry run listed every shard
+without an error: 588 conversation-exports to produce against 449 before.
+
+## Export
+
+No `--only`, no `--shards`. The old tree was left untouched and the new one written beside it.
+
+```
+message shards : 11 exported of 11 detected
+conversations  : 589 listed
+files written  : 589 (1625160 messages reported by the exporter)
+failures       : 0
+filtered_conversations: 0
+wall time      : 126.4 min   (Phase 20.5: 39.5 min)
+```
+
+## What the migration actually added
+
+Both columns are from `audit_account.py`, the same instrument, on the two trees:
+
+| metric | OLD (20.5) | NEW (20.8A) | delta |
+| ------ | ---------- | ----------- | ----- |
+| shards | 3 | 11 | +8 |
+| conversation exports | 449 | 589 | +140 (+31 %) |
+| messages | 412 416 | **1 625 160** | **+1 212 744 (+294 %)** |
+| conversations | 272 | **281** | +9 (+3 %) |
+| chunks | 22 751 | **78 726** | +55 975 (+246 %) |
+| cross-shard conversations | 118 | 124 | +6 |
+| duplicates removed | 0 | 0 | — |
+| without a serverId | 279 | 279 | — |
+| skipped | 0 | 0 | — |
+| `PARTIAL` | False | **False** | — |
+| crossed chunks | 0 | **0 PASS** | — |
+| discovered / imported | 272 / 272 | **281 / 281** | — |
+
+**Coverage is the headline.** The earliest message moved from **2025-05-20 to 2019-08-26** — five and
+a half more years of history — while the latest moved forward a day. The largest conversation grew from
+176 396 to 526 711 messages but its *share* fell from 42.8 % to 32.4 %: the new material is spread
+across the account rather than piled onto the conversations that were already biggest.
+
+One conversation now spans **all eleven shards** and reaches back to 2019-08-26, which is the clearest
+single illustration of why the per-conversation shard merge from Phase 19 was necessary rather than
+nice to have.
+
+## Control eval (A) — same 18 questions, unchanged code
+
+The point of this run is attribution: **new corpus, old code**. The question set was verified
+byte-identical to the one Phase 20.7 ran (ids, question text, notes, categories) before anything was
+spent, so a difference in the results cannot be a difference in the questions.
+
+Validity was then confirmed after the fact: the run's 18 records contain **zero** `成员X` labels, i.e.
+they were produced by the pre-Phase-20.8B speaker rendering. (The run had been launched just before
+that work landed, and its modules were imported before the first file was written — the absence of an
+`ImportError` from the new module is itself the proof.)
+
+### OLD vs A
+
+```
+answers that changed textually : 18 / 18
+answers whose evidence changed : 18 / 18   (7–19 of 20 sources replaced, every question)
+
+signal                  OLD(20.7)   A(20.8A)
+silence claims                 14         11     <- 2 resolved, 0 newly introduced
+citation mismatches             0          0
+attribution flags               3          3
+invalid citations               0          0
+mean latency ms             39 706     91 830
+mean distinct conversations    12.3       11.3
+```
+
+Every answer changed and essentially the whole evidence set turned over. That is what a 3.9× corpus
+with 5.7 more years in it should do, and it is why the raw "did the answer change" count is not
+evidence of improvement on its own.
+
+The signal worth reading is the asymmetric one: **two silence claims disappeared and none appeared**.
+A silence claim is the engine saying the record does not contain something; the most likely reason for
+a false one is that the evidence was never in the corpus, which is exactly what the migration
+corrected. Three failures were *not* resolved by the extra history, which is itself useful — it says
+those three are not simply missing data.
+
+Latency roughly doubled (39.7 s → 91.8 s mean) on a 3.5× larger index. That is the cost of the
+history, recorded rather than optimised.
+
+## The measurement that replaces a three-hour re-run
+
+Phase 20.8C asks whether preserving sender identity moves the results. Before spending another
+index build on it, the mechanism was measured directly: the whole corpus was rendered by the
+**pre-20.8B code** (a git worktree at the previous commit) and by the **current code**, and the
+rendered lines hashed.
+
+```
+25 largest real conversations (13 of them groups), 628 996 rendered lines
+  pre-20.8B : b97be9cf798b7dc9e72570eb305827f9
+  20.8B     : b97be9cf798b7dc9e72570eb305827f9     <- identical
+```
+
+**The sender-identity change is a byte-level no-op on this corpus.** That is not a surprise in
+hindsight — Phase 20.8B had already measured that 562 of 589 exports name the conversation rather than
+a sender, so there was no identity to render — but it converts a prediction into a fact, and it means
+the A→B comparison can only ever measure LLM sampling noise. The targeted re-run is still being
+executed, because "measured end to end" beats "argued from a hash", but the expectation is now
+explicit and falsifiable rather than vague.
+
+## Phase 20.8A: status
+
+| requirement | state |
+| ----------- | ----- |
+| migration verified before spending two hours | ✅ 3 → 11 shards, sizes up 2–3× |
+| full export, no filter, old baseline preserved | ✅ 589 files, 1 625 160 messages, 0 failures, `account_full` untouched |
+| audit: complete and separated | ✅ `PARTIAL` False, 0 crossed chunks, 281/281 discovered == imported, 0 skipped |
+| OLD vs NEW comparison | ✅ +1 212 744 messages, coverage 2025-05 → **2019-08** |
+| control eval on unchanged code | ✅ 18/18, validity confirmed by the absence of `成员X` |
+| evidence-level diff | ✅ all evidence turned over; silence claims 14 → 11, citations still perfect |
+| question set unchanged | ✅ verified byte-identical to Phase 20.7's |
+| real data kept out of the repo | ✅ questions, results, diffs and the analysis scripts all under `data/real/` |
