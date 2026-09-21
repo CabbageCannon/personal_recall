@@ -60,8 +60,9 @@ def short_reason(exc: BaseException, *, limit: int = REASON_LIMIT) -> str:
 def read_conversation_labels(account_dir: Path) -> dict[str, str]:
     """``conversation_id -> display name`` for the evidence card headers.
 
-    A card says "我, 对方 · 2025-05-12", which is unambiguous inside one conversation and ambiguous
-    across an account of forty. The name is decoration and never a key (see
+    A card says "我, 对方 · 2025-05-12" (in a group: "我, 成员A, 成员B"), which is unambiguous inside
+    one conversation and ambiguous across an account of forty. The name is decoration and never a key
+    (see
     ``memory.conversations``), so this is best-effort by design: an export tree with no
     ``sessions.json`` and no sidecar still answers questions, just without the header.
 

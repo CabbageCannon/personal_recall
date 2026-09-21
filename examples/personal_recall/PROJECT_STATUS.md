@@ -3170,9 +3170,15 @@ that would configure it (`init`) requires an interactive terminal and writes the
 this project never does. Parsing the databases directly was considered and rejected: it is out of
 bounds for this project by explicit rule, and it would be a second, unmaintained exporter.
 
-**So this is a configuration gap in the installed tool, not a design problem in the product.** The
-resolution layer is complete and will populate on the next `sync_conversation_labels.py` run after
-`weflow-cli init` is run once in a terminal.
+**So this is a configuration gap in the installed tool, not a design problem in the product.**
+
+The one hypothesis left at the time — that `init` was the unlock and had simply never been run because
+it needs a terminal — has since been **tested and disproven** (Phase 20.8B). The user ran `init` in an
+interactive terminal; `contacts --json` afterwards still returned every `displayName` equal to its own
+`username` (120 of 120 contacts, 0 real names). So the measured statement is the narrower one: **the
+tested CLI version exposes no human-readable name through any non-interactive command, whatever its
+configuration.** The resolution layer is complete and will use a name the moment a version offers one;
+no fix is claimed, because none was found.
 
 ## What was built
 
@@ -3400,3 +3406,136 @@ Large-conversation Dominance (here: not observed)
 | manual labels | ⏸ **all 18 pending the user** |
 | failure-case table | ⏸ awaiting those labels |
 | real eval data kept out of the repo | ✅ questions, results and the analysis script all under `data/real/` |
+
+---
+
+# Phase 20.8B — Group sender identity
+
+The acceptance eval in Phase 20.7 surfaced a defect that no synthetic corpus had: **in a group chat,
+every non-self speaker rendered as the literal `对方`.** The adapter decided the speaker from `isSend`
+alone — `1` became `我`, everything else became `对方` — which is exactly right for a direct chat, where
+there are only two speakers and the role *is* the identity, and collapses entirely in a group: A, B and
+C all speaking produced `对方, 对方, 对方`. Asked "who did X", the answers correctly reported that the
+record only labels them `对方` — the evidence could not tell the members apart, so nothing could be
+attributed.
+
+## The model: role, identity, label
+
+One display string was carrying three different facts. They are now separate:
+
+| concept | field | what it is |
+| ------- | ----- | ---------- |
+| role | `MemoryEvent.speaker_role` | `"self"` / `"other"` — what `isSend` actually means |
+| identity | `MemoryEvent.speaker_id` | the exporter's `senderUsername`. Data, never a label |
+| label | `MemoryEvent.sender_name` | what `MemoryEvent.line` renders — all the LLM and the card see |
+
+Both new fields have defaults, so the plain-text adapter, the synthetic corpora and every existing
+constructor keep working untouched. `sender_name` is the only one anything rewrites.
+
+## The rule
+
+* **self** → `我`, always, in both kinds of conversation. The attribution safety clause in the prompt
+  and `attribution_screen.py` match this exact string, so substituting anything else would silently
+  disable them.
+* **direct, other** → `对方`, unchanged. Role alone distinguishes two speakers, and keeping the string
+  identical makes this phase a strict no-op for every already-evaluated direct corpus.
+* **group, other** → a deterministic pseudonym, `成员A`, `成员B`, …, assigned by **first appearance in
+  that conversation's chronological order** and continuing `…Y, Z, AA, AB, …`. Never a hash, never a
+  random number, never the wxid: a label derived from the id is the identity spelled again.
+
+Two edges are answered rather than guessed. A member whose export carried no `senderUsername` keeps
+`对方` — two anonymous messages cannot be shown to be the same person or different people, and `对方`
+can never collide with an assigned `成员X`. A stream whose source declares no role at all (the
+plain-text adapter names its speakers directly) is left completely alone.
+
+## Where it is applied, and why that is the subtle part
+
+Over the **whole conversation's stream**, never per shard. Applied from inside `parse_weflow_events`,
+a conversation spanning `MSG0`/`MSG1` would get shard A's first speaker as `成员A` and shard B's
+*different* first speaker as `成员A` too — two people with one label, which is worse than the defect it
+replaces because it reads as a fact rather than as an absence.
+
+| call site | why | why it cannot split a conversation |
+| --------- | --- | ---------------------------------- |
+| `memory.shards.merge_shard_events` | the stream is final here; covers the shard directory and `import_account` | the merge has already combined every shard |
+| `memory.processor.WeFlowSessionProcessor` | a single `{talker}_messages.json` | the whole conversation is in the one file being read |
+| `recall.count_corpus_events` | the same single file, counted rather than indexed | the same |
+
+## What is deliberately unchanged
+
+Change **only** the sender representation. The embedding model, FAISS, hybrid search, BM25, RRF, `k`,
+the hybrid pool, session chunking, the prompt, the reranker and the workflow are all identical, and no
+name is injected into chunk text beyond the speaker label itself. A later controlled eval can attribute
+a change in results to this commit and nothing else.
+
+## Privacy
+
+No raw `senderUsername`, wxid or `@chatroom` token appears in a rendered line, a session chunk, a
+participant list, or the document metadata a prompt and the API read. Checked on values, not on key
+names: the leak this project already had survived a check that only looked at names. The conversation
+id itself — which for a group carries the chatroom suffix — is still carried by `conversation_id` and
+`memory_chunk_id`; that predates this phase, and the web projection that strips it from the browser
+payload is unchanged.
+
+## Tests
+
+`tests/test_senders.py` — 37 tests, all offline and synthetic. The brief's case is asserted literally
+(`我 / 成员A / 成员B / 成员A`), alongside: two members posting byte-identical text still getting
+different labels; one id keeping one label across shards; a group spanning `MSG0`/`MSG1` labelled once
+over the merged stream; determinism across runs; 28 members continuing past `Z` to `AA`; an all-self
+group and a one-member group; an id-less sender staying `对方`; and no wxid or chatroom token in any
+rendered value. `tests/test_account_isolation.py` gained one changed expectation — a group's
+`participants` is now `("成员A", "我")` instead of `("对方", "我")`, which is the point of the phase.
+
+## What the real export actually carries — measured, and it changes the conclusion
+
+Everything above is verified against synthetic exports. The real account was then swept, and it does
+not carry the data this fix needs:
+
+| checked across all 589 exports of the migrated account | result |
+| ------------------------------------------------------ | ------ |
+| `senderUsername` equal to the conversation's own talker | **562** |
+| `senderUsername` differing from the talker | **0** |
+| exports with more than one distinct non-self sender | **0** |
+| exports with no non-self message at all (not applicable) | 27 |
+
+**The exporter writes the *conversation* into the sender field.** Every group message in the account
+carries the chatroom's own id as its `senderUsername`, so there is no per-member identity anywhere in
+the exported data to preserve.
+
+Without a guard, the pseudonym rule would therefore stamp every real group with a single `成员A` —
+asserting that exactly one other person said all of it. That is a worse answer than `对方`, because it
+reads as a fact rather than as an absence. So the rule carries a second edge, applied and tested:
+
+* a sender id that **is the conversation's own id** is not an identity, and those messages keep `对方`
+  — the same answer as before, for the same reason (`labels.usable_name` already refuses a name that
+  is the identity spelled again).
+
+**The honest conclusion for this phase is therefore negative on real data**: the model is now correct
+and the collapse is fixed *where a sender id exists*, but on this exporter **no group gains member
+attribution** — every one still renders `对方`. The value delivered is the separation itself plus the
+guard: the day an exporter supplies a real sender id, the labels appear with no further change, and in
+the meantime the engine does not manufacture a member who was never in the record.
+
+This also means the controlled re-eval (Phase 20.8C) is expected to show **no movement** from A to B:
+the sender representation of the real corpus is byte-identical before and after, because there was
+never an identity to render. That is a prediction with a mechanism behind it, and it is worth
+measuring rather than assuming.
+
+## Phase 20.8B: status
+
+| requirement | state |
+| ----------- | ----- |
+| self still the literal `我` | ✅ asserted, and the attribution tests are unchanged |
+| direct conversation still `对方` | ✅ asserted, including with several other ids |
+| group members distinguishable **when the export carries a sender id** | ✅ `我 / 成员A / 成员B / 成员A`, synthetic |
+| group members distinguishable **on this project's real export** | ❌ **not possible** — 562/589 exports name the conversation, 0 name a sender. Groups still render `对方` |
+| the conversation's own id never becomes a member | ✅ guarded and tested |
+| one id, one label, whole conversation | ✅ including across shards |
+| labelled once over the merged stream | ✅ a multi-shard group cannot get two `成员A`s |
+| deterministic, never derived from the id | ✅ two runs byte-identical; no wxid in any label |
+| > 26 senders | ✅ `…Z, AA, AB` (Excel-column, no reuse) |
+| no internal id in any rendered value | ✅ prompt text, chunk text, participants, served metadata |
+| plain-text path untouched | ✅ `assign_sender_labels` is a no-op on a role-less stream |
+| retrieval logic untouched | ✅ no change to embedder, index, search, chunking or prompt |
+| `init` claim corrected | ✅ sync layer states the measured fact, not the hypothesis |

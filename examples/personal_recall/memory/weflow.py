@@ -31,7 +31,13 @@ Two decisions worth stating explicitly:
 * **``isSend`` decides the speaker, not the identity.** ``isSend == 1`` becomes ``"我"`` and
   ``isSend == 0`` becomes ``"对方"``. The speaker-attribution safety logic in the prompt and in
   ``attribution_screen.py`` depends on the literal string ``"我"``; substituting a wxid or a display
-  name would silently disable it. The real ``senderUsername`` is kept in metadata instead.
+  name would silently disable it. What ``isSend`` *means* is recorded as the role
+  (:data:`~memory.events.SELF_ROLE` / :data:`~memory.events.OTHER_ROLE`) and the real
+  ``senderUsername`` as :attr:`MemoryEvent.speaker_id`, so a group member can be told from another
+  without either of them becoming a label. ``"对方"`` is the adapter's *provisional* label: it is final
+  for a direct chat, and ``memory.senders.assign_sender_labels`` replaces it per conversation for a
+  group, where one role covers many people. The raw ``senderUsername`` also stays in metadata, because
+  that is where the exporter's own fields live.
 * **Body text is never guessed.** ``parsedContent`` is preferred over ``content`` over ``rawContent``
   because the exporter's own parse is the most likely to be clean. A body that is raw markup (multi-KB
   ``<msg><emoji .../></msg>`` payloads are real) is **replaced by a short placeholder** so internal
@@ -46,14 +52,20 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
 
-from .events import MemoryEvent, ParseResult
+from .events import OTHER_ROLE, SELF_ROLE, MemoryEvent, ParseResult
 
 #: Envelope key holding the message list when the payload is versioned rather than a bare list.
 ENVELOPE_MESSAGES_KEY = "messages"
 ENVELOPE_SCHEMA_KEY = "schema"
 
+#: The display label for each role *before* ``memory.senders`` labels a conversation. ``SELF`` is
+#: final in every kind of conversation; ``OTHER`` is final for a direct chat and provisional for a
+#: group, where several people share the role and each needs a label of their own.
 SELF = "我"
 OTHER = "对方"
+
+#: Kept out of every rendered string: the identity of the speaker, not their name.
+SENDER_ID_FIELD = "senderUsername"
 
 #: Body fields in preference order (the exporter's parse first, the raw payload last).
 BODY_FIELDS: tuple[str, ...] = ("parsedContent", "content", "rawContent")
@@ -260,7 +272,13 @@ def parse_weflow_events(
             missing_text += 1
 
         is_send = entry.get("isSend")
-        sender_name = SELF if str(is_send) == "1" else OTHER
+        speaker_role = SELF_ROLE if str(is_send) == "1" else OTHER_ROLE
+        sender_name = SELF if speaker_role == SELF_ROLE else OTHER
+        # The identity is carried as data and is deliberately not what ``sender_name`` is built from:
+        # a label derived from a wxid is the identity spelled again, which is the failure
+        # ``memory.labels.usable_name`` exists to prevent one layer up.
+        raw_identity = entry.get(SENDER_ID_FIELD)
+        speaker_id = str(raw_identity).strip() if raw_identity not in (None, "") else ""
 
         event_id = build_event_id(
             conversation_id, entry.get("serverId"), entry.get("localId"), position
@@ -292,6 +310,8 @@ def parse_weflow_events(
                 text=text,
                 message_type=message_type,
                 metadata=metadata,
+                speaker_role=speaker_role,
+                speaker_id=speaker_id,
             )
         )
 

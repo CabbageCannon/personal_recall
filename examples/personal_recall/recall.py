@@ -61,6 +61,7 @@ from memory.processor import (
     WeFlowSessionProcessor,
     session_documents,
 )
+from memory.senders import assign_sender_labels
 from memory.sessions import build_sessions
 from memory.shards import (
     DEFAULT_MERGED_CONVERSATION,
@@ -147,13 +148,19 @@ def count_corpus_events(corpus: Path, source_format: str) -> tuple[int, int, str
     """Return ``(n_events, n_skipped, detail)`` for a corpus, using the matching adapter."""
     raw = corpus.read_text(encoding="utf-8-sig", errors="replace")
     if source_format == "weflow":
-        parsed = parse_weflow_events(json.loads(raw))
+        # A single export file is one conversation's messages, so this stream *is* the whole
+        # conversation and labelling it here cannot split one across shards — which is exactly why the
+        # same pass is wrong per shard in ``merge_shard_events`` (see ``memory.senders``). Nothing
+        # counted below depends on the speaker; the labelling keeps the representation identical to
+        # what ``WeFlowSessionProcessor`` renders for the same file, so the guard and the index agree.
+        parsed = parse_weflow_events(json.loads(raw), conversation_id=corpus.stem)
+        events = assign_sender_labels(parsed.events, corpus.stem)
         detail = (
-            f"{len(parsed.events)} messages "
+            f"{len(events)} messages "
             f"(types: {dict(sorted(parsed.message_types.items()))}, "
             f"suppressed payloads: {parsed.suppressed_payloads})"
         )
-        return len(parsed.events), parsed.skipped, detail
+        return len(events), parsed.skipped, detail
     parsed_txt = parse_txt_events(raw)
     return len(parsed_txt.events), parsed_txt.skipped_lines, f"{len(parsed_txt.events)} messages"
 

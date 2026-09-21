@@ -19,6 +19,10 @@ Ordering rules:
 * **Ties are broken by (shard label, position in shard)**, so the merged order is deterministic and
   reproducible rather than dependent on directory enumeration.
 
+The merged stream is also where sender labels are assigned (``memory.senders``). That step belongs
+here for the same reason the merge itself does: a group member has to be labelled once for the whole
+conversation, and per shard each shard would start its own numbering and give two people one name.
+
 Deduplication is deliberately conservative:
 
 * A message is deduplicated only on a **strong identity** — the exporter's ``serverId``. That survives
@@ -37,6 +41,7 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from .events import MemoryEvent
+from .senders import assign_sender_labels
 from .weflow import WeFlowParseResult, parse_weflow_events
 
 #: Default conversation id for a merged corpus (all shards of one conversation share it).
@@ -210,7 +215,12 @@ def merge_shard_events(
         )
 
     merged.sort(key=lambda item: (item[0], item[1], item[2]))
-    events = [item[3] for item in merged]
+    # Sender labelling is the *last* step, and it has to be: the pass below sees every shard's
+    # messages in one chronological stream, so a member who appears in two shards is one person with
+    # one label. Applied per shard instead — inside ``parse_weflow_events`` — each shard would start
+    # numbering its own first speaker at 成员A, and two different people would share a name. The
+    # labelling is a rename of an already-final stream; it does not reorder, drop or add an event.
+    events = assign_sender_labels([item[3] for item in merged], conversation_id)
 
     report = MergeReport(
         shards=tuple(infos),

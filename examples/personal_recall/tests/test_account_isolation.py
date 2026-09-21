@@ -734,8 +734,10 @@ def test_group_talker_is_detected_and_its_id_recovered_from_the_file_name(scratc
     chunks = build_account_sessions(events_by_conversation, session_config())
     assert len(chunks) == 1 and chunks[0].n_events == 2
     assert chunks[0].conversation_id == "group_1@chatroom"
-    # ``participants`` is a sorted set of the literal speaker labels, so "对方" sorts before "我".
-    assert chunks[0].participants == ("对方", "我")
+    # ``participants`` is a sorted set of the literal speaker labels. In a **group** the other speaker
+    # is a per-conversation pseudonym (``memory.senders``), because one ``对方`` for every member is
+    # what made a group's evidence unattributable; a direct chat still renders ``对方``.
+    assert chunks[0].participants == ("成员A", "我")
     assert_no_chunk_crosses_conversations(chunks, events_by_conversation)
 
 

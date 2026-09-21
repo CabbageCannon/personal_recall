@@ -23,6 +23,7 @@ from quivr_core.processor.processor_base import ProcessedDocument, ProcessorBase
 from quivr_core.processor.registry import FileExtension
 
 from .events import parse_txt_events
+from .senders import assign_sender_labels
 from .sessions import MemoryChunk, SessionConfig, build_sessions
 from .weflow import parse_weflow_events
 
@@ -133,8 +134,13 @@ class WeFlowSessionProcessor(ConversationSessionProcessor):
 
         conversation_id = self.conversation_id or file.path.stem
         parsed = parse_weflow_events(json.loads(content), conversation_id=conversation_id)
+        # Safe to label here, and only because this path reads exactly one file: a WeFlow export is one
+        # conversation's messages, so the whole conversation is in this stream and no second shard can
+        # disagree with it. Inside ``parse_weflow_events`` the same pass would be per *shard*, which is
+        # what gives a multi-shard conversation two different people called 成员A (``memory.senders``).
+        events = assign_sender_labels(parsed.events, conversation_id)
         sessions = build_sessions(
-            parsed.events,
+            events,
             config=self.session_config,
             conversation_id=conversation_id,
         )

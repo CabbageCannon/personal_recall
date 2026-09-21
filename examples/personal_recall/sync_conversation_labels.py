@@ -74,13 +74,24 @@ from memory.labels import (  # noqa: E402
 DEFAULT_ACCOUNT_DIR = BASE_DIR / "data" / "real" / "account_full"
 
 #: Said out loud instead of leaving a zero in a count column. A run that resolves nothing on this
-#: installation is the *expected* result, not a bug, and a reader who does not know that will read
+#: installation is the *measured* result, not a bug, and a reader who does not know that will read
 #: the empty sidecar as a broken feature.
+#:
+#: The wording states what was measured and nothing more. An earlier version of this note named
+#: `weflow-cli init` in an interactive terminal as "the known unlock" — that was a hypothesis, and it
+#: has since been tested and disproven: `init` was run in a terminal, and `contacts --json` afterwards
+#: still returned every `displayName` equal to its own `username` (120 of 120 contacts, 0 real names).
+#: So the measured fact is that the tested CLI version exposes no human-readable name through any
+#: non-interactive command, whatever its configuration. That is a limit of the installed tool, not a
+#: gap in this project: the resolution layer below is complete and will use a name the moment a
+#: version offers one. No fix is claimed here, because none was found.
 NO_NAMES_NOTE = (
-    "no conversation name resolved - this is the expected result on a fresh weflow-cli install, "
-    "where every displayName comes back equal to its username. `weflow-cli init` in an interactive "
-    "terminal is the known unlock; until then the UI shows no conversation header rather than an "
-    "internal id."
+    "no conversation name resolved - this is the measured result on the tested weflow-cli, which "
+    "exposes no human-readable name through any non-interactive command: `contacts --json` returns "
+    "every displayName equal to its username (120 of 120 contacts, 0 real names), including after "
+    "`weflow-cli init` was run in an interactive terminal. The resolution layer is complete and will "
+    "use a name as soon as a version offers one; until then the UI shows no conversation header "
+    "rather than an internal id."
 )
 
 

@@ -37,7 +37,8 @@ from .conversations import (
     parse_session_listing,
     shard_stem,
 )
-from .events import MemoryEvent, parse_txt_events
+from .events import OTHER_ROLE, SELF_ROLE, MemoryEvent, parse_txt_events
+from .senders import assign_sender_labels, column_label
 from .sessions import MemoryChunk, SessionConfig, build_sessions
 from .shards import (
     MergeReport,
@@ -61,12 +62,16 @@ __all__ = [
     "MemoryEvent",
     "MemoryChunk",
     "MergeReport",
+    "OTHER_ROLE",
+    "SELF_ROLE",
     "SessionConfig",
     "ShardInfo",
     "WeFlowParseResult",
     "account_label",
+    "assign_sender_labels",
     "build_account_sessions",
     "build_sessions",
+    "column_label",
     "conversation_id_from_export_filename",
     "conversation_type_of",
     "crossed_conversation_chunks",
