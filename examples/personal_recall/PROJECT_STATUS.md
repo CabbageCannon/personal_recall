@@ -1,7 +1,8 @@
 # Personal Recall Engine — Project Status
 
 Living decision log. Facts only from real eval output; no estimated numbers.
-Branch: `personal-recall` · Base: `CabbageCannon/quivr`
+Branch: `personal-recall` · Repo: `CabbageCannon/personal_recall` (renamed from
+`CabbageCannon/quivr`, which still redirects) · Built on Quivr (`QuivrHQ/quivr`)
 
 ---
 
