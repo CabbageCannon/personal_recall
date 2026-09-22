@@ -3775,3 +3775,157 @@ artifact: q07's "the record only labels them 对方" is not something a better l
 exported data does not contain a member identity in the first place. Whatever those failures are made
 of, they survive both corrections — which narrows the search for Phase 21 to retrieval and generation
 rather than data plumbing.
+
+---
+
+# Phase 20.9 — Patched exporter integration and real sender regression
+
+Phase 20.8 ended with a measured dead end: the exporter put the *conversation* into the sender field,
+so 562 of 589 exports named the chatroom rather than the person and no group could gain member
+attribution. The exporter has since been patched, and this phase integrates that contract, verifies it
+on the real account, and re-runs the acceptance set against it.
+
+Aggregates only: counts, ratios, shard names and durations. No person's name, no wxid, no chatroom id,
+no question and no answer appears in this record.
+
+## The patched exporter
+
+Tested against a local, unpushed build (`213458c`, `master`, version 1.7.0 — note the upstream npm
+install is 1.5.1 and its version number *is not* a reliable indicator of which build runs).
+
+Exposed to this project non-destructively: a shim directory holding a `weflow-cli.cmd` that invokes the
+local `cli.cjs`, prepended to `PATH` for the duration of the work. Nothing global was installed and no
+npm package was overwritten. Verified through the path the product actually takes —
+`exporter.run_subprocess` — rather than by reading a version string.
+
+**A trap worth recording**: `where.exe` and Python's `shutil.which` both resolve the shim first and
+correctly, but Git Bash's own command resolution prefers the extension-less npm shim, so a bare
+`weflow-cli --version` in that shell reports the *old* build. The Python path is what matters and it
+was confirmed to be 1.7.0.
+
+## The raw contract gate
+
+Run before touching any Personal Recall code, over a bounded export of the 24 conversations behind the
+speaker-attribution questions, across all 12 shards — 937 548 group non-self messages:
+
+| check | before the patch | after |
+| ----- | ---------------- | ----- |
+| `senderUsername` equal to the conversation id | 100 % | **0** |
+| group exports with more than one distinct sender | 0 / 76 | **75 / 76** |
+| distinct senders in the largest group | 1 | **471** |
+| `senderUsername` empty | — | 2.0 % |
+| `senderDisplay` usable | field did not exist | **97.5 %** |
+| `senderDisplay` equal to an id, a conversation id, or containing a chatroom suffix | — | **0 / 0 / 0** |
+| one sender, two different displays | — | **0** |
+
+The gate the phase set — the conversation id must never appear as a sender — passed, so the
+integration proceeded.
+
+## The integration
+
+Four things are now separate on `MemoryEvent`, and only the last is rendered:
+
+| concept | field | what it is |
+| ------- | ----- | ---------- |
+| role | `speaker_role` | `self` / `other` |
+| identity | `speaker_id` | the raw sender. Data, never rendered |
+| display | `speaker_display` | the exporter's optional candidate name |
+| label | `sender_name` | what `MemoryEvent.line` renders |
+
+```
+self            -> 我, always, both conversation kinds
+direct, other   -> 对方, unchanged even when a display is present
+group, other    -> a usable speaker_display
+                   else a deterministic 成员A/B/C pseudonym
+                   else 对方
+```
+
+"Usable" is `memory.labels.usable_name` — the project's single "is this a name or the identity spelled
+again" rule — extended with the speaker's own id, so a value equal to the sender id, equal to the
+conversation id, empty, or carrying a chatroom suffix is refused. A raw identity cannot reach the model
+because the field carrying it happens to be called "Display".
+
+Three things the naive version gets wrong, each handled and tested:
+
+* **Resolution is over the whole conversation.** A display arriving on a later message labels that
+  member's earlier messages too; resolving per event would make one person wear two labels inside one
+  conversation.
+* **Pseudonyms are numbered over every member**, named or not — numbering only the unnamed ones would
+  renumber everybody the moment somebody acquires a name, so the same corpus would render differently
+  between runs.
+* **Two members resolving to one human name stay distinguishable**, qualified with the pseudonym each
+  already had. This is not hypothetical: the real corpus produces **20 259 such labels**, every one of
+  which would otherwise have been an identity collapse.
+
+One ambiguity in the brief — a message carrying a display but no sender id — was measured rather than
+argued: it occurs **0 times** in the real export, so the chosen reading changes nothing.
+
+## Measured on the real bounded corpus
+
+24 conversations, 1 269 939 messages, 58 724 chunks:
+
+| rendered label | messages |
+| -------------- | -------- |
+| direct: `我` / `对方` | unchanged, byte for byte |
+| group: a **human-readable name** | **914 498** |
+| group: a pseudonym `成员X` | 4 463 |
+| group: `对方` (no sender in the export) | 18 577 |
+
+Crossed conversation chunks: **0**. Across 16 cross-shard group conversations, **0 speakers were given
+more than one label**. A privacy sweep found **0 labels equal to a raw id** and **0 containing a
+chatroom token**; the only two places a raw id appears inside rendered text are inside message
+*content*, where a person pasted one.
+
+## Full account v3
+
+Not assumed to be 11 shards: rediscovered as **12** (`MSG11` is new). The export resumed across an
+interrupted run rather than repeating it — the product writer re-exports everything on every run, so a
+small driver that skips conversations already on disk was used to produce the identical tree. `v2` and
+`v1` were left untouched.
+
+```
+shards           : 12 of 12        files written : 612        failures : 0
+the export was NOT filtered (filtered_conversations = 0)
+PARTIAL          : False           missing shards: none       crossed chunks: 0
+```
+
+**v2 → v3** (the snapshot advanced; this is *not* attributable to the sender patch):
+
+| metric | v2 | v3 | delta |
+| ------ | -- | -- | ----- |
+| shards | 11 | 12 | +1 |
+| conversation files | 589 | 612 | +23 |
+| messages | 1 625 160 | **1 630 452** | +5 292 |
+| conversations | 281 | 281 | 0 |
+| chunks | 78 726 | **81 576** | +2 850 |
+| coverage start | 2019-08-26 | **2019-08-13** | 13 days earlier |
+
+## Sender coverage, full account
+
+| | value |
+| --- | ----- |
+| group non-self messages | 1 243 041 |
+| sender identity resolved | **1 210 494 (97.38 %)** |
+| sender identity unknown | 32 547 (2.62 %) |
+| **sender == conversation id** | **0** |
+| human-readable display resolved | **1 195 322 (96.16 %)** |
+| display equal to an id / conversation id / containing a chatroom suffix | **0 / 0 / 0** |
+| distinct real senders | **5 017** (4 687 of them, 93.4 %, have a display) |
+
+## Conversation labels
+
+`sync_conversation_labels.py` against v3 with the patched exporter:
+
+```
+conversations   : 281 (direct 140, group 141)
+labels resolved : 131 of 281      (Phase 20.6 measured 0 of 281)
+  direct        :   1 resolved / 140
+  group         : 130 resolved / 141
+```
+
+A large improvement, and an uneven one: group conversation names now resolve almost completely (92 %)
+while direct chats do not (0.7 %). The cause is measured rather than guessed — `contacts --json` returns
+at most **500 records** (a higher `--limit` returns no more, and an over-large one returns nothing), and
+of those 500 only one matches a direct conversation while all 141 groups do. The listing is
+predominantly chatrooms and group members, not the user's one-to-one contacts. That is an exporter-side
+limitation, recorded here for whoever picks it up; no workaround was attempted.
