@@ -4073,3 +4073,152 @@ figure is `0 chunks embedded`, and it is that instrument's output, not an infere
 parity, every invalidation dimension listed above (and the knobs that must *not* invalidate),
 corruption and partial-build recovery, staging/promotion, privacy, and the structural claim that the
 three front ends share one seam. Full suite: **686 passed**, from a 598 baseline.
+
+## Cold build and warm start, measured on account_full_v3
+
+The benchmark the phase exists for. The account is the same snapshot Phase 20.9 exported: 281
+conversations, 1 630 452 messages, **81 576 chunks** — and the cache's own `chunk_count` is 81 576, so
+nothing was dropped between the export and the index.
+
+### Cold build
+
+```
+INDEX CACHE MISS (81576 chunks, 81576 chunks embedded, cache written)
+INDEX CACHE TIMING (fingerprint 100 ms, import 52222 ms, embed 4251641 ms, save 743 ms, total 4304711 ms)
+```
+
+| stage | time | share |
+| ----- | ---- | ----- |
+| fingerprint the source tree | **0.10 s** | 0.002 % |
+| import — parse 1 630 452 messages into 81 576 chunks | **52.2 s** | 1.2 % |
+| **embed** | **4 251.6 s = 70.9 min** | **98.8 %** |
+| save (FAISS + docstore + manifest + promote) | **0.74 s** | 0.02 % |
+| **total** | **4 304.7 s = 71.7 min** | |
+
+Embedding is essentially the entire cost, and everything this phase added — fingerprinting, the
+manifest, the atomic save — together accounts for **less than one second**. A second cold build on the
+same data, run while other work was competing for the CPU, took 73 minutes wall-clock, and an earlier
+uncontended one about 42; the spread is machine load, not variance in the work.
+
+**Cache on disk: 264 MB** (`index.faiss` 167 MB of vectors, `index.pkl` 108 MB of documents, plus the
+manifest and READY marker).
+
+### Warm start — a fresh Python process
+
+```
+INDEX CACHE HIT (81576 chunks, 0 chunks embedded, cache v1, projection v1, age 23 min, loaded in 2.77 s)
+INDEX CACHE TIMING (fingerprint 315 ms, load 2772 ms, total 9018 ms)
+```
+
+| | cold | warm |
+| --- | ---- | ---- |
+| chunks embedded | 81 576 | **0** |
+| chunks loaded | — | 81 576 |
+| fingerprint | 0.10 s | 0.32 s |
+| import / load | 52.2 s | **2.77 s** |
+| embedding | 70.9 min | **0** |
+| total to a usable session | 71.7 min | **3.1 s** (9.0 s including the query's own model load) |
+
+**0 is not an elapsed-time inference.** The warm path is exercised in the tests with an embedder whose
+`embed_documents` raises, at three levels — the seam, the CLI end to end, and the cold path as a
+control — so a warm start that embedded anything would fail rather than merely look fast. The figure
+above is that instrument's output on the real account.
+
+### BM25 is rebuilt, not persisted
+
+Measured on the real index: docstore load 0.96 s, `iter_documents` immediate (81 576 documents), and
+**BM25 index construction plus its first query 11.95 s**. That is 0.3 % of the cold build and is paid
+once per process on first query, not per query. It is recorded as rebuilt. Persisting it would save
+about twelve seconds on a start that already takes three, so it was not done — if it ever becomes the
+head of the profile, that is a one-artifact change.
+
+## Retrieval parity — cold build vs warm load
+
+Six frozen questions (q07, q09 and one from each of the single-fact, temporal, multi-source and
+older-memory families), asked through the product's own retriever — the dense retriever over the FAISS
+store, the `BM25Retriever` over the same documents, and the `HybridRRFRetriever` that fuses them with
+the configured weights — reconstructed from whatever store the session produced. No model is called, so
+generation noise is structurally absent rather than merely ignored.
+
+```
+documents in index : cold 81576   warm 81576
+
+query     sources  same order  same set  metadata  content
+q07            20        True      True      True     True
+q09            20        True      True      True     True
+q01            20        True      True      True     True
+q04            20        True      True      True     True
+q10            20        True      True      True     True
+q17            20        True      True      True     True
+
+EXACT PARITY (same sources, same order, same metadata): True
+```
+
+Not set equality: the **order** is identical, and so are each source's chunk id, conversation digest,
+start time, content digest and length. A citation that pointed at the right evidence before points at
+the same evidence now.
+
+## Invalidation, as a real smoke rather than only as a test
+
+On a bounded copy of a real export (never on the v3 snapshot):
+
+| action | result |
+| ------ | ------ |
+| first run | `INDEX CACHE MISS` → built, 1222 chunks embedded, cache written |
+| run again, unchanged | `INDEX CACHE HIT`, **0 chunks embedded** |
+| **one message edited in one export file** | `INDEX CACHE INVALID (source export tree changed)` → rebuilt |
+| **`k` 20 → 15** | `INDEX CACHE HIT`, **0 chunks embedded** |
+| **`--answer-prompt` changed** | `INDEX CACHE HIT`, **0 chunks embedded** |
+| **`--temperature` changed** | `INDEX CACHE HIT`, **0 chunks embedded** |
+
+The two directions the phase cares about, both confirmed on real data: a changed corpus is never
+mistaken for an unchanged one, and a changed query-time setting never costs seventy minutes of
+embedding.
+
+## Product integration
+
+`recall.build_account_session` is the single seam, and a structural test fails if a second decision
+point appears. All three front ends reach it and none owns cache logic:
+
+| front end | how it reaches the seam |
+| --------- | ----------------------- |
+| `recall.py` | calls it; `--index-dir` and `--rebuild-index` |
+| `webapp/app.py` | `RecallState.load` calls it; `web.py` exposes the same two flags |
+| `real_eval.py` | calls it with `index_dir` / `rebuild_index` |
+
+Verified on the real path: a CLI warm start and a web warm start both report `INDEX CACHE HIT … 0
+chunks embedded` against the same entry, so a warm page is not quietly rebuilding what a warm CLI
+already loaded.
+
+## Phase 21A: status
+
+| requirement | state |
+| ----------- | ----- |
+| a cold build persists | ✅ 264 MB, atomic promotion, READY written last |
+| a new process warm-starts from it | ✅ **2.77 s load, 0 chunks embedded** (from 71.7 min) |
+| cold vs warm retrieval parity | ✅ exact, including order and citation metadata |
+| source / chunking / embedding / schema changes invalidate | ✅ tested per dimension, source change confirmed on real data |
+| `k` / prompt / generation config do **not** invalidate | ✅ confirmed on real data |
+| partial or corrupt caches are never loaded | ✅ staging never promoted; every failure is a stated reason |
+| CLI / web / eval share one cache | ✅ one seam, structural test, warm web start verified |
+| regression | ✅ 686 passed (598 before, +88) |
+| real cold + warm benchmark | ✅ above |
+| retrieval behaviour unchanged | ✅ parity; no change to BGE, FAISS parameters, hybrid search, BM25, RRF, `k`, pool, chunking, prompt, reranker or workflow |
+
+## Known limitations
+
+* **A changed source still means a full rebuild.** Incremental sync is Phase 21B by explicit decision;
+  this phase makes the common case (nothing changed) fast and leaves the rare case correct.
+* **BM25 is rebuilt on first query**, not persisted — 11.95 s, measured.
+* **The fingerprint cost grows with the tree, not with the corpus.** It stats every file the import
+  reads: 0.10 s cold, 0.32 s warm on 612 exports. It does not read file contents, which is what keeps
+  it cheap — and why a `mtime_ns` touch is treated as a change rather than being verified away.
+* **`allow_dangerous_deserialization=True` is a real trust boundary.** `FAISS.load_local` unpickles
+  `index.pkl`, which holds the chat text. The index directory is therefore as private as the export
+  tree and must stay local and git-ignored; nothing loads an index from a path this project did not
+  write and validate.
+* **The manifest records the vector width but cannot detect a live embedder that keeps the same
+  configured identity while producing different vectors.** That case surfaces as FAISS's own assertion
+  at load time — loud, never a silent wrong answer.
+* **One entry per account, keyed by a digest of the account path**, so two accounts cannot share one,
+  and a renamed account gets a fresh entry rather than a stale hit.
