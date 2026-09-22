@@ -24,13 +24,14 @@ import asyncio
 import json
 import sys
 import warnings
+from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
 import dotenv
-from langchain_community.embeddings import HuggingFaceEmbeddings
+import index_cache
 from quivr_core import Brain
 from quivr_core.files.file import FileExtension
 from quivr_core.llm import LLMEndpoint
@@ -74,7 +75,10 @@ from run_baseline import register_answer_prompt, serialize_sources
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
-EMBEDDING_MODEL_PATH = Path(r"D:\AIModels\bge-small-zh-v1.5")
+#: The adopted embedding model, defined where the persistent index binds to it (see
+#: ``index_cache.EMBEDDING_MODEL_PATH``). Kept as a module attribute because it is the product's
+#: documented model identity, not merely an implementation detail.
+EMBEDDING_MODEL_PATH = index_cache.EMBEDDING_MODEL_PATH
 
 #: The repo-level `.env` (python-dotenv discovers it relative to the *calling file* by
 #: default, which is fragile for an installed/relocated CLI), so resolve it explicitly.
@@ -180,7 +184,9 @@ def is_multi_shard(corpus: Path) -> bool:
     return corpus.is_dir()
 
 
-def build_brain_from_chunks(chunks, llm_config: LLMEndpointConfig, name: str, origin: str) -> Brain:
+def build_brain_from_chunks(
+    chunks, llm_config: LLMEndpointConfig, name: str, origin: str, *, embedder: Any = None
+) -> Brain:
     """Build a brain from already-built session chunks.
 
     Shared by both non-processor paths — a single conversation merged from several shards, and an
@@ -192,16 +198,16 @@ def build_brain_from_chunks(chunks, llm_config: LLMEndpointConfig, name: str, or
     ``"Filename: … Content: …"`` prefix is deliberately NOT applied — ``process_file`` only adds it when
     the inner metadata already carries the field, which is exactly why the processor path's chunk text
     has no prefix.
+
+    ``embedder`` is injectable so a test can hand in a deterministic stub and prove that a warm start
+    never calls it — the embedder is the expensive, model-backed part, and "fast" is not the claim
+    being made about it.
     """
     documents = session_documents(chunks, skipped_source_lines=0)
     for index, document in enumerate(documents, start=1):
         document.metadata["chunk_index"] = index
         document.metadata["original_file_name"] = origin
-    embedder = HuggingFaceEmbeddings(
-        model_name=str(EMBEDDING_MODEL_PATH),
-        model_kwargs={"device": "cpu"},
-        encode_kwargs={"normalize_embeddings": True},
-    )
+    embedder = embedder or index_cache.build_embedder()
     # Mirror `Brain.from_files` exactly: obtain the loop and run on it WITHOUT closing it.
     # `asyncio.run()` closes the loop it creates, which leaves the main thread with no current loop
     # and makes the later synchronous `brain.ask()` fail with "no current event loop".
@@ -216,7 +222,27 @@ def build_brain_from_chunks(chunks, llm_config: LLMEndpointConfig, name: str, or
     )
 
 
-def build_brain_from_events(events, llm_config: LLMEndpointConfig, name: str, origin: str) -> Brain:
+def build_brain_from_vector_store(
+    vector_store, llm_config: LLMEndpointConfig, name: str, embedder
+) -> Brain:
+    """Build a brain over an **already-built** vector store — the warm-start path.
+
+    Deliberately not ``Brain.afrom_langchain_documents``: that calls ``aadd_documents``, which embeds
+    every chunk again, which is the 80 minutes this whole phase exists to avoid. Assembling the brain
+    around a loaded store touches no document and no vector.
+    """
+    return Brain(
+        name=name,
+        id=uuid4(),
+        llm=LLMEndpoint.from_config(llm_config),
+        embedder=embedder,
+        vector_db=vector_store,
+    )
+
+
+def build_brain_from_events(
+    events, llm_config: LLMEndpointConfig, name: str, origin: str, *, embedder: Any = None
+) -> Brain:
     """Build a brain from one conversation's merged events (the Phase 18B path).
 
     Sessions are built over the *union* of the shards, so a conversation spanning two databases becomes
@@ -227,7 +253,7 @@ def build_brain_from_events(events, llm_config: LLMEndpointConfig, name: str, or
         config=SessionConfig(max_chars=DEFAULT_MAX_SESSION_CHARS),
         conversation_id=DEFAULT_MERGED_CONVERSATION,
     )
-    return build_brain_from_chunks(sessions, llm_config, name, origin)
+    return build_brain_from_chunks(sessions, llm_config, name, origin, embedder=embedder)
 
 
 def build_brain(corpus: Path, llm_config: LLMEndpointConfig) -> Brain:
@@ -248,11 +274,7 @@ def build_brain(corpus: Path, llm_config: LLMEndpointConfig) -> Brain:
             name=f"personal_recall_{corpus.stem}",
             file_paths=[corpus],
             llm=LLMEndpoint.from_config(llm_config),
-            embedder=HuggingFaceEmbeddings(
-                model_name=str(EMBEDDING_MODEL_PATH),
-                model_kwargs={"device": "cpu"},
-                encode_kwargs={"normalize_embeddings": True},
-            ),
+            embedder=index_cache.build_embedder(),
             processor_kwargs={
                 "session_config": SessionConfig(max_chars=DEFAULT_MAX_SESSION_CHARS)
             },
@@ -330,20 +352,37 @@ def build_session(
     return build_brain(corpus, llm_config), retrieval_config
 
 
+def account_export_error(account_dir: Path) -> FileNotFoundError:
+    """The one wording for "this export tree holds nothing to index".
+
+    A function rather than a literal because it is raised from two places — the seam, before the
+    embedding model is loaded, and the importer itself — and two spellings of the same failure would
+    make a user's two attempts to diagnose it look like two different problems.
+    """
+    return FileNotFoundError(
+        f"{account_dir} contains no shard export directories holding "
+        f"'{{talker}}{EXPORT_FILENAME_SUFFIX}' files"
+    )
+
+
 def import_account_directory(
-    account_dir: Path, *, shard_dir: Path | None = None
+    account_dir: Path,
+    *,
+    shard_dir: Path | None = None,
+    session_config: SessionConfig | None = None,
 ) -> tuple[list[MemoryChunk], AccountImportReport]:
     """Discover an account export tree and import every conversation in it, kept separate.
 
     Returns the built session chunks (not events) because a caller must never receive one flat stream
     it could session-split across a conversation boundary.
+
+    ``session_config`` is the segmentation the caller is indexing with. It is a parameter rather than
+    a constant because the persistent index binds to it: a caller that changes ``max_chars`` must be
+    able to say so here, and the cache entry built from the old value must not be reused.
     """
     layout = load_account_directory(account_dir, shard_dir=shard_dir)
     if not layout.exports:
-        raise FileNotFoundError(
-            f"{account_dir} contains no shard export directories holding "
-            f"'{{talker}}{EXPORT_FILENAME_SUFFIX}' files"
-        )
+        raise account_export_error(account_dir)
     events_by_conversation, report = import_account(
         layout.exports,
         shards_detected=layout.shards_detected,
@@ -356,7 +395,8 @@ def import_account_directory(
     )
     report.notes = report.notes + layout.notes
     chunks = build_account_sessions(
-        events_by_conversation, SessionConfig(max_chars=DEFAULT_MAX_SESSION_CHARS)
+        events_by_conversation,
+        session_config or SessionConfig(max_chars=DEFAULT_MAX_SESSION_CHARS),
     )
 
     # The phase's hard rule, re-checked on real data rather than trusted: no retrieval unit may hold
@@ -380,6 +420,7 @@ def build_account_brain(
     answer_prompt: str = DEFAULT_ANSWER_PROMPT,
     max_output_tokens: int = 8192,
     temperature: float = 0.0,
+    embedder: Any = None,
 ) -> tuple[Brain, RetrievalConfig]:
     """Index the account's sessions. Split from the import so a caller can report before embedding."""
     register_answer_prompt(answer_prompt)
@@ -392,23 +433,155 @@ def build_account_brain(
         llm_config,
         f"personal_recall_account_{account_name}",
         origin=f"account:{account_name}",
+        embedder=embedder,
     )
     return brain, retrieval_config
+
+
+@dataclass
+class AccountSession:
+    """One account-wide retrieval session, plus what the persistent index did for it.
+
+    Returned by :func:`build_account_session` — the **one** cache-aware seam. The CLI, the web app
+    and the acceptance runner all go through it, so an index can only be built, loaded, invalidated
+    or reported in one place; a second implementation of that decision is how one front end starts
+    answering from a different index than another.
+    """
+
+    brain: Brain
+    retrieval_config: RetrievalConfig
+    report: AccountImportReport
+    index: index_cache.IndexStatus
 
 
 def build_account_session(
     account_dir: Path,
     *,
     shard_dir: Path | None = None,
+    index_dir: Path | None = None,
+    rebuild_index: bool = False,
+    embedder: Any = None,
+    session_config: SessionConfig | None = None,
     k: int = DEFAULT_K,
     hybrid_pool: int = DEFAULT_HYBRID_POOL,
     workflow: str = "no-rewrite",
     answer_prompt: str = DEFAULT_ANSWER_PROMPT,
     max_output_tokens: int = 8192,
     temperature: float = 0.0,
-) -> tuple[Brain, RetrievalConfig, AccountImportReport]:
-    """Build the product brain over an entire account, one conversation at a time."""
-    chunks, report = import_account_directory(account_dir, shard_dir=shard_dir)
+) -> AccountSession:
+    """Build the product brain over an entire account — from the persistent index when it is valid.
+
+    The whole phase in one function. A warm start loads vectors that were produced by *exactly* this
+    configuration over *exactly* this export tree and skips both the parse and the embedding; anything
+    else rebuilds, and says why. ``k``, ``hybrid_pool``, ``workflow``, ``answer_prompt``, the LLM model,
+    ``temperature`` and ``max_output_tokens`` are **not** part of that decision — they select from an
+    index, never build one, so changing k from 20 to 15 is still a hit.
+
+    Every failure mode degrades to the cold path: an unreadable entry, a fingerprint that cannot be
+    established, even a cache directory that cannot be written. The export tree remains the source of
+    truth, and this function always returns a working session.
+    """
+    config = session_config or SessionConfig(max_chars=DEFAULT_MAX_SESSION_CHARS)
+    cache_dir = index_cache.account_cache_dir(account_dir, index_dir)
+    # Leftover staging from an interrupted build is rubble, not history: remove it before anything
+    # reads or writes, so no later run has to reason about it.
+    index_cache.cleanup_staging(cache_dir)
+
+    # The export tree is resolved before the embedder is built, and once for both paths: a directory
+    # listing costs milliseconds and the model costs tens of seconds, so a mistyped path must fail on
+    # the walk rather than after loading a hundred megabytes of weights. The layout is also what the
+    # warm path's report needs, so the same walk serves the hit and the miss.
+    layout = load_account_directory(account_dir, shard_dir=shard_dir)
+    if not layout.exports:
+        raise account_export_error(account_dir)
+    # The answer prompt is installed by whichever path actually produces a session — here on a hit,
+    # and in `build_account_brain` on a miss — never by both, because `register_answer_prompt` *adds
+    # to the prompt it finds* rather than replacing it: registering twice would double the rules.
+    # Deliberately after the check above, too: a directory that holds nothing to index must not
+    # mutate a process-global registry on its way to an error.
+    embedder = embedder or index_cache.build_embedder()
+
+    started = perf_counter()
+    fingerprint_started = perf_counter()
+    try:
+        source_fp: str | None = index_cache.source_fingerprint(
+            account_dir, exclude=(cache_dir.parent,)
+        )
+        fingerprint_failure: str | None = None
+    except OSError as exc:
+        # A tree that cannot be walked cannot be *proven* unchanged, so nothing may be loaded from
+        # the cache or written into it. The import below is allowed to fail on its own terms.
+        source_fp = None
+        fingerprint_failure = f"source export tree unreadable ({type(exc).__name__})"
+    fingerprint_ms = int((perf_counter() - fingerprint_started) * 1000)
+
+    inspection = index_cache.inspect(
+        cache_dir,
+        expected=index_cache.ExpectedIndex(
+            source_fingerprint=source_fp,
+            chunking_fingerprint=index_cache.chunking_fingerprint(config),
+            schema_version=index_cache.PROJECTION_VERSION,
+            embedder=embedder,
+        ),
+        rebuild=rebuild_index,
+    )
+
+    # --- warm start: load the index and reconstruct what was imported --------------------------
+    if inspection.is_hit:
+        load_started = perf_counter()
+        vector_store = None
+        failure = ""
+        try:
+            vector_store = index_cache.load_store(cache_dir, embedder)
+        except Exception as exc:  # noqa: BLE001 - any load failure is a miss, never a crash
+            failure = f"index artifacts unreadable ({type(exc).__name__})"
+        else:
+            failure = index_cache.verify_store(vector_store, inspection.manifest)
+        load_ms = int((perf_counter() - load_started) * 1000)
+        if not failure:
+            manifest = inspection.manifest
+            register_answer_prompt(answer_prompt)
+            # The framework resolves the API key inside `RetrievalConfig.__init__` and
+            # `LLMEndpoint.from_config` reads it, so the retrieval config is built first — the same
+            # ordering `build_account_brain` depends on.
+            llm_config = build_llm_config(
+                max_output_tokens=max_output_tokens, temperature=temperature
+            )
+            retrieval_config = build_retrieval_config(
+                llm_config, k=k, hybrid_pool=hybrid_pool, workflow=workflow
+            )
+            return AccountSession(
+                brain=build_brain_from_vector_store(
+                    vector_store,
+                    llm_config,
+                    f"personal_recall_account_{account_dir.name}",
+                    embedder,
+                ),
+                retrieval_config=retrieval_config,
+                report=index_cache.warm_report(manifest, layout),
+                index=index_cache.IndexStatus(
+                    outcome=index_cache.HIT,
+                    chunk_count=manifest.chunk_count,
+                    vector_dimension=manifest.vector_dimension,
+                    cache_age_seconds=manifest.age_seconds(),
+                    cache_format_version=manifest.cache_format_version,
+                    schema_version=manifest.schema_version,
+                    embedded=False,
+                    fingerprint_ms=fingerprint_ms,
+                    load_ms=load_ms,
+                    total_ms=int((perf_counter() - started) * 1000),
+                ),
+            )
+        inspection = index_cache.Inspection(index_cache.INVALID, failure)
+
+    # --- cold start: import, embed, then persist ------------------------------------------------
+    import_started = perf_counter()
+    chunks, report = import_account_directory(
+        account_dir, shard_dir=shard_dir, session_config=config
+    )
+    import_ms = int((perf_counter() - import_started) * 1000)
+
+    embed_started = perf_counter()
     brain, retrieval_config = build_account_brain(
         chunks,
         account_dir.name,
@@ -418,8 +591,64 @@ def build_account_session(
         answer_prompt=answer_prompt,
         max_output_tokens=max_output_tokens,
         temperature=temperature,
+        embedder=embedder,
     )
-    return brain, retrieval_config, report
+    embed_ms = int((perf_counter() - embed_started) * 1000)
+
+    vector_store = brain.vector_db
+    chunk_count = int(getattr(getattr(vector_store, "index", None), "ntotal", 0))
+    vector_dimension = int(getattr(getattr(vector_store, "index", None), "d", 0))
+    reason = inspection.reason
+    cache_written = False
+    save_ms = 0
+    if source_fp is None:
+        reason = fingerprint_failure or "source export tree unreadable"
+    else:
+        manifest = index_cache.IndexManifest(
+            cache_format_version=index_cache.CACHE_FORMAT_VERSION,
+            schema_version=index_cache.PROJECTION_VERSION,
+            source_fingerprint=source_fp,
+            chunking_fingerprint=index_cache.chunking_fingerprint(config),
+            embedding_fingerprint=index_cache.embedding_fingerprint(
+                embedder, dimension=vector_dimension
+            ),
+            chunk_count=chunk_count,
+            vector_dimension=vector_dimension,
+            created_at=index_cache.utc_now(),
+            report=index_cache.report_aggregates(report),
+        )
+        save_started = perf_counter()
+        try:
+            index_cache.save_index(cache_dir, vector_store=vector_store, manifest=manifest)
+        except (OSError, ValueError) as exc:
+            # The index is built and answerable; the cache is an accelerator, and losing it must not
+            # cost the user their answer. Reported rather than swallowed, because a cache that never
+            # writes is a silent 80-minute tax on every run.
+            reason = f"{reason}; cache write failed ({type(exc).__name__})"
+        else:
+            cache_written = True
+        save_ms = int((perf_counter() - save_started) * 1000)
+
+    return AccountSession(
+        brain=brain,
+        retrieval_config=retrieval_config,
+        report=report,
+        index=index_cache.IndexStatus(
+            outcome=inspection.outcome,
+            reason=reason,
+            chunk_count=chunk_count,
+            vector_dimension=vector_dimension,
+            cache_format_version=index_cache.CACHE_FORMAT_VERSION,
+            schema_version=index_cache.PROJECTION_VERSION,
+            cache_written=cache_written,
+            embedded=True,
+            fingerprint_ms=fingerprint_ms,
+            import_ms=import_ms,
+            embed_ms=embed_ms,
+            save_ms=save_ms,
+            total_ms=int((perf_counter() - started) * 1000),
+        ),
+    )
 
 
 def main() -> int:
@@ -446,6 +675,19 @@ def main() -> int:
         default=None,
         help="optional: the WeChat Msg/Multi directory, so the report can say which MSG*.db shards "
         "exist versus how many were actually exported (read-only, names only)",
+    )
+    parser.add_argument(
+        "--index-dir",
+        type=Path,
+        default=None,
+        help="account mode only: where the persistent index lives (default: "
+        "data/real/.index_cache/<account>). It is derived from real chat, so keep it local, keep it "
+        "out of git, and delete it whenever you like - the next run rebuilds from the exports",
+    )
+    parser.add_argument(
+        "--rebuild-index",
+        action="store_true",
+        help="account mode only: ignore a valid persistent index and rebuild it from the exports",
     )
     parser.add_argument(
         "--source-format",
@@ -480,12 +722,23 @@ def main() -> int:
             return 2
         if not args.json:
             print(f"account  : {args.account}  (source=weflow, account-wide)")
+            print(f"index dir: {index_cache.account_cache_dir(args.account, args.index_dir)}")
             print(f"config   : k={args.k}, hybrid pool={args.hybrid_pool}, workflow={args.workflow}, "
                   f"prompt={args.answer_prompt}")
             print(f"question : {args.question}\n")
+            print("index    : loading the persistent index, or building it if it is not valid")
         try:
-            chunks, account_report = import_account_directory(
-                args.account, shard_dir=args.shard_dir
+            session = build_account_session(
+                args.account,
+                shard_dir=args.shard_dir,
+                index_dir=args.index_dir,
+                rebuild_index=args.rebuild_index,
+                k=args.k,
+                hybrid_pool=args.hybrid_pool,
+                workflow=args.workflow,
+                answer_prompt=args.answer_prompt,
+                max_output_tokens=args.max_output_tokens,
+                temperature=args.temperature,
             )
         except FileNotFoundError as exc:
             print(f"error: {exc}", file=sys.stderr)
@@ -494,7 +747,7 @@ def main() -> int:
             print(f"error: could not read a shard export: {exc}", file=sys.stderr)
             return 2
 
-        if not chunks:
+        if not session.index.chunk_count:
             print(
                 f"error: {args.account} produced 0 conversation sessions, so nothing was indexed. "
                 "Check that the export directories hold '<talker>_messages.json' files with messages.",
@@ -502,28 +755,33 @@ def main() -> int:
             )
             return 2
         if not args.json:
-            for line in account_report.lines():
+            # What the index cache did, in aggregate numbers only — never a message, a name or an id.
+            for line in session.index.lines():
+                print(f"index    : {line}")
+            # One import, two consumers: the report below and the brain above describe the same
+            # chunks, so the printed coverage can never drift from what was actually indexed.
+            for line in session.report.lines():
                 print(f"  {line}")
-            for row in account_report.per_conversation:
+            for row in session.report.per_conversation:
                 print(
                     f"  {row.conversation_id:28} {row.messages:6} msgs  {row.span()}"
                     f"  (shards: {', '.join(row.shards)})"
                 )
+            if session.report.reconstructed_from_cache and not session.report.per_conversation:
+                # Say it rather than printing an empty table as if it were data.
+                print(
+                    "  (no per-conversation rows: a warm start does not re-parse the exports, and "
+                    "per-conversation detail is not persisted — the counts above are exact)"
+                )
             print()
 
-        brain, retrieval_config = build_account_brain(
-            chunks,
-            args.account.name,
-            k=args.k,
-            hybrid_pool=args.hybrid_pool,
-            workflow=args.workflow,
-            answer_prompt=args.answer_prompt,
-            max_output_tokens=args.max_output_tokens,
-            temperature=args.temperature,
+        return ask_and_render(
+            session.brain,
+            session.retrieval_config,
+            args,
+            account_report=session.report,
+            index_status=session.index,
         )
-        # One import, two consumers: the report above and the brain below describe the same chunks, so
-        # the printed coverage can never drift from what was actually indexed.
-        return ask_and_render(brain, retrieval_config, args, account_report=account_report)
 
     source_format = (
         detect_source_format(args.corpus) if args.source_format == "auto" else args.source_format
@@ -678,6 +936,7 @@ def ask_and_render(
     args,
     *,
     account_report: AccountImportReport | None = None,
+    index_status: index_cache.IndexStatus | None = None,
 ) -> int:
     """Ask the question and print the answer with its evidence. The one place output is formatted.
 
@@ -698,6 +957,9 @@ def ask_and_render(
                     "groundedness": result["groundedness"],
                     "retrieved": result["retrieved"],
                     "account": account_report.as_dict() if account_report is not None else None,
+                    # Counts, versions and timings only — the same identity-free rule as the status
+                    # lines, because `--json` output gets pasted into issues.
+                    "index": index_status.as_dict() if index_status is not None else None,
                     "config": {
                         "k": args.k,
                         "hybrid_pool": args.hybrid_pool,

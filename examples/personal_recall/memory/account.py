@@ -114,6 +114,11 @@ class AccountImportReport:
     #: and pasted, and the identity of a conversation is not this module's to carry around.
     filtered_conversations: int = 0
     notes: tuple[str, ...] = field(default_factory=tuple)
+    #: True when the counts above were rebuilt from the persistent index cache instead of a fresh
+    #: import. A warm start does not parse the exports, so it cannot know what each conversation
+    #: contained: the aggregate counts, the coverage span and ``partial`` are exact, and
+    #: ``per_conversation`` is empty **by design** rather than because nothing was imported.
+    reconstructed_from_cache: bool = False
 
     @property
     def partial(self) -> bool:
@@ -174,6 +179,12 @@ class AccountImportReport:
                 "is PARTIAL by construction - every conversation that was not selected is absent "
                 "from the export and invisible to every answer"
             )
+        if self.reconstructed_from_cache:
+            out.append(
+                "note           : these counts and the coverage span were reconstructed from the "
+                "persistent index cache (the exports were not re-parsed); per-conversation detail "
+                "was not persisted, so no per-conversation rows are shown"
+            )
         for note in self.notes:
             out.append(f"note           : {note}")
         return out
@@ -185,6 +196,7 @@ class AccountImportReport:
             "missing_shards": list(self.missing_shards),
             "filtered_conversations": self.filtered_conversations,
             "partial": self.partial,
+            "reconstructed_from_cache": self.reconstructed_from_cache,
             "conversations_discovered": self.conversations_discovered,
             "conversations_imported": self.conversations_imported,
             "conversations_without_messages": list(self.conversations_without_messages),

@@ -3983,3 +3983,93 @@ the sender fix: between the two exports the account also advanced (+5 292 messag
 days earlier, one new shard). What *is* directly attributable is the representation itself — the same
 kind of line that read `对方` in v2 reads a human name in v3, and there is no other candidate cause for
 that. Separating the two effects event-by-event was not attempted.
+
+---
+
+# Phase 21A — Persistent retrieval index
+
+Every process start re-embedded all 81 576 chunks with BGE and rebuilt FAISS — about **80 minutes**
+before the first question on the real account. This phase makes a cold build persist and a warm start
+load it, with **zero embedding of unchanged chunks**. The index is a pure accelerator: the JSON export
+tree remains the source of truth, and deleting the cache leaves a fully working system that rebuilds.
+
+## What already existed, and what was added
+
+Quivr's own `Brain.save` / `Brain.load` were investigated first, because reinventing FAISS
+serialization is the obvious way to get this wrong. They persist a FAISS store plus a
+`BrainSerialized` config — **but they only support `OpenAIEmbeddings`** and raise
+`"can't serialize embedder other than openai for now"` for anything else, which includes our
+`HuggingFaceEmbeddings`. So the seam is not reusable as a whole.
+
+What *is* reused is what Quivr itself calls underneath it: `FAISS.save_local` / `FAISS.load_local`,
+which write `index.faiss` (vectors) and `index.pkl` (docstore + `index_to_docstore_id`) — the
+vector↔Document↔metadata binding a citation depends on. Nothing about FAISS serialization was
+reinvented.
+
+**BM25 needs no persistence at all.** It is built lazily on first query (`rag/hybrid.py`) from
+documents enumerated out of the FAISS docstore, so it is a pure function of what was already
+persisted. It is **warm-rebuilt, not persisted**, and this record says so rather than claiming a
+persistence that was not done. Its rebuild cost is measured below.
+
+| artifact | how it was treated |
+| -------- | ------------------ |
+| dense vectors | **persisted** (`index.faiss`) |
+| documents + metadata | **persisted** (`index.pkl`) |
+| BM25 lexical index | **rebuilt** on first query from the loaded documents |
+| account report | aggregates **persisted**; per-conversation rows deliberately not |
+
+## One seam
+
+`recall.build_account_session(...)` is the only place that decides whether to load or build. The CLI
+(`recall.py`), the web app (`webapp/app.py`), and the acceptance runner (`real_eval.py`) all call it
+and none of them inspects the cache; structural tests fail if a second decision point appears. The
+warm branch constructs the `Brain` around the loaded vector store, which embeds nothing, and
+`k` / `hybrid_pool` / `workflow` / `answer_prompt` / LLM settings are *not* part of the decision.
+
+## The manifest, and what invalidates a cache
+
+`manifest.json` holds versions, hex digests and counts only — no message text, no speaker id, no wxid,
+no chatroom id, asserted by test. Validation runs cheapest-and-most-decisive first, with the source
+tree last because it is the only check that walks the filesystem:
+
+```
+--rebuild-index  ->  directory exists  ->  manifest readable & strict  ->  cache format
+  ->  document projection  ->  READY marker agrees  ->  artifacts present & non-empty
+  ->  chunking  ->  embedding  ->  source  ->  HIT
+```
+
+| fingerprint | what it covers | what it deliberately ignores |
+| ----------- | -------------- | ---------------------------- |
+| **source** | relative path + size + `mtime_ns` for every file the import reads, sorted; a moved tree stays a hit | file contents (never read for this) |
+| **chunking** | `max_gap`, `max_chars`, and a chunking-shape version | — |
+| **projection** | an explicit `DOCUMENT_PROJECTION_VERSION` — the sender-label work of Phase 20.9 is exactly the kind of change it exists for | — |
+| **embedding** | embedder class, model identity, `normalize_embeddings`, vector dimension | device, batch size |
+| **not in any of them** | — | `k`, `hybrid_pool`, `workflow`, `answer_prompt`, LLM model, `temperature`, `max_output_tokens` |
+
+An unstattable file **raises** rather than being skipped: an inventory with a hole cannot establish
+that the source is unchanged, and a false cache hit is far worse than a false miss. A load that passes
+inspection is still measured against the manifest (`verify_store`: chunk count, dimension, docstore
+completeness), because the manifest is a claim and that is the check.
+
+## Atomic build
+
+`save_index` never writes into the live entry. It builds into `<leaf>.staging-<hex>`, verifies the
+artifacts, writes `manifest.json`, writes `READY` **last**, then promotes: the old entry is renamed
+aside (not deleted), the staging directory is renamed into place, and the old one is removed only
+after success — with the old entry restored if the rename fails. An interrupted build therefore leaves
+nothing loadable, and a leftover staging directory is ignored and cleaned up rather than mistaken for
+an index.
+
+## How "zero embedding" is proved
+
+Not with a stopwatch. The tests pass an `Embeddings` subclass whose `embed_documents` **raises**
+(`embed_query` is still allowed), at three levels: the seam, the CLI end to end, and the cold path as
+a control. A warm start that embedded anything would fail rather than look fast. The reported warm
+figure is `0 chunks embedded`, and it is that instrument's output, not an inference from elapsed time.
+
+## Tests
+
+88 new tests in `tests/test_index_cache.py`, covering cold/warm, retrieval and citation-metadata
+parity, every invalidation dimension listed above (and the knobs that must *not* invalidate),
+corruption and partial-build recovery, staging/promotion, privacy, and the structural claim that the
+three front ends share one seam. Full suite: **686 passed**, from a 598 baseline.

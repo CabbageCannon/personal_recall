@@ -28,6 +28,16 @@ from .sessions import MemoryChunk, SessionConfig, build_sessions
 from .weflow import parse_weflow_events
 
 
+#: The version of the **document projection** — how a ``MemoryChunk`` becomes a Document, meaning
+#: its page content and the set (and spelling) of its metadata keys. It is not a knob and not a
+#: schema in the database sense: it is the record of a *representation*, and the persistent index
+#: binds to it, because a change here changes what is embedded and every stored vector becomes
+#: wrong. Phase 20.9's sender labels (`speaker_role` / `speaker_id` / `speaker_display`) are exactly
+#: the kind of change this exists for. Bump it in the same commit as the change; a stale index then
+#: rebuilds itself instead of answering from text that is no longer what the product renders.
+DOCUMENT_PROJECTION_VERSION = 1
+
+
 def session_documents(
     sessions: list[MemoryChunk],
     skipped_source_lines: int,
@@ -39,6 +49,9 @@ def session_documents(
     "Filename: ... Content: ..." when it is present, and the fixed-character
     baseline never triggers that — adding it here would change the embedded
     text and turn the chunking A/B into a two-variable experiment.
+
+    Changing anything this function produces means bumping
+    :data:`DOCUMENT_PROJECTION_VERSION`.
     """
     return [
         Document(

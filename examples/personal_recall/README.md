@@ -151,15 +151,74 @@ Then open **<http://127.0.0.1:8000>**.
   cards their conversation names. It is real chat, so it stays where `.gitignore` already covers it.
 * **Start it with `python web.py`.** `--account <dir>` points at another export tree and
   `PERSONAL_RECALL_ACCOUNT` does the same for a shell that always uses one; `--port` changes the port.
-* **The index is built once, at startup** — parse and embed the whole account, then every question
-  reuses it. If that fails, the server still starts and the page says why rather than answering from
-  nothing.
+* **The index is built once and then kept** — parse and embed the whole account on the first run,
+  then every question reuses it and later runs load it from the persistent index instead of paying
+  for it again. If that fails, the server still starts and the page says why rather than answering
+  from nothing.
 * **There is no upload, no login and no history.** Ingestion stays a CLI step, the page keeps no
   record of what you asked, and the server binds `127.0.0.1` only — there is no flag for anything
   else, because this process serves private chat.
 
 Answers come from `recall.answer_question`, the same path the CLI prints from, so the page and the
 terminal cannot disagree about what was retrieved or cited.
+
+### The persistent index
+
+Indexing a whole account is the slow, expensive step — on this account ~1 636 000 messages became
+81 576 chunks and took about 80 minutes — and almost all of it produces something that does not
+change between runs. So it is written to disk once:
+
+```
+data/real/.index_cache/<account>/     index.faiss   the vectors
+                                      index.pkl     the documents they point at
+                                      manifest.json versions, digests and counts
+                                      READY         written last, once the entry is complete
+```
+
+Every front end goes through the same decision. The first run reports `INDEX CACHE MISS`, builds the
+index and writes it; the next reports `INDEX CACHE HIT` and loads it without re-parsing the exports
+and **without embedding a single unchanged chunk**:
+
+```
+index    : INDEX CACHE HIT (81576 chunks, 0 chunks embedded, cache v1, projection v1, age 2 min, loaded in 3.41 s)
+index    : INDEX CACHE TIMING (fingerprint 412 ms, load 3410 ms, total 3822 ms)
+```
+
+* **The export tree stays the source of truth.** The index is an accelerator and nothing more:
+  `rm -rf data/real/.index_cache` costs exactly one rebuild. It is derived from real chat — vectors
+  *and* the session text they point at — so it is git-ignored (`.index_cache/`) and must stay local.
+* **`--index-dir <path>`** moves it (a faster disk, a different account), and **`--rebuild-index`**
+  ignores a valid entry and rebuilds:
+
+  ```bash
+  python recall.py "去年三月我们定的方案是什么？" --account data/real/account_full --rebuild-index
+  ```
+
+* **It is rebuilt, never patched, when an input changes**: the export tree (path, size and mtime of
+  every file the import reads), the chunking configuration, the document projection version, the
+  embedding model or its normalisation, or the cache format. Anything else — `k`, `hybrid_pool`,
+  `workflow`, the prompt, the LLM, the temperature — reads from the index rather than producing one,
+  so changing k from 20 to 15 is still a cache hit.
+* **A cache it cannot trust is a cache it does not use.** A missing, truncated, mismatched or
+  half-written entry is reported as `INDEX CACHE INVALID (reason)` and the run rebuilds. Nothing is
+  ever written into the live entry: a build lands in a staging directory and is promoted by one
+  rename, with the `READY` marker written last, so a run interrupted at minute 70 leaves a directory
+  no later run will mistake for an index.
+* **What a warm start cannot reconstruct, it says it cannot.** The counts, the coverage span and
+  `PARTIAL` come back from the manifest; the per-conversation table does not, because those rows were
+  never persisted, and the report says so instead of printing an empty table as if it were data. BM25
+  is rebuilt lazily on the first question in either case — the timing line reports that as a rebuild,
+  never as a load.
+* **The manifest names nobody**: versions, hex digests and counts. The cached documents obviously do
+  hold your chat text — that is what an index is — which is why the whole directory is local, ignored
+  by git, and deletable at any time.
+
+`real_eval.py` takes the same two flags, so an acceptance run over 20 questions pays the build once:
+
+```bash
+python real_eval.py --questions eval_questions.json --account data/real/account_full \
+    --index-dir data/real/.index_cache/account_full --out real_eval_results.json
+```
 
 ### Conversation names on the evidence cards
 

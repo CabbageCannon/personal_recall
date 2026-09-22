@@ -111,18 +111,32 @@ class RecallState:
     """The account index for this process: built once, then read by every request."""
 
     account_dir: Path
+    #: Where the persistent index lives, and whether to ignore a valid one. Both are handed straight to
+    #: ``build_account_session``, so the server makes no cache decision of its own — it has the same two
+    #: controls as the CLI, over the same single cache, which is what keeps a warm web start and a warm
+    #: CLI start the same start.
+    index_dir: Path | None = None
+    rebuild_index: bool = False
     brain: Any = None
     retrieval_config: Any = None
     report: Any = None
     conversation_labels: dict[str, str] = field(default_factory=dict)
     detail: str = ""
+    #: What the persistent index did at startup (``recall.index_cache.IndexStatus``), for the log
+    #: line `web.py` prints. Aggregate numbers only — never a message, a name or an id.
+    index_status: Any = None
 
     @property
     def ready(self) -> bool:
         return self.brain is not None
 
     def load(self) -> None:
-        """Build the account index. Never raises: a failure becomes ``detail``, not a traceback."""
+        """Open the account index — from the persistent index when it is valid. Never raises.
+
+        A warm start is the normal case: the index is loaded rather than rebuilt, and ``web.py``
+        prints what happened. The cache decision itself is not made here — ``build_account_session``
+        makes it, once, for the CLI, this server and the acceptance runner alike.
+        """
         import dotenv
         import recall
 
@@ -131,14 +145,19 @@ class RecallState:
         dotenv.load_dotenv(recall.ENV_PATH if recall.ENV_PATH.exists() else None)
 
         try:
-            brain, retrieval_config, report = recall.build_account_session(self.account_dir)
+            session = recall.build_account_session(
+                self.account_dir,
+                index_dir=self.index_dir,
+                rebuild_index=self.rebuild_index,
+            )
         except Exception as exc:  # noqa: BLE001 - any failure must still leave a server that answers
             self.detail = short_reason(exc)
             return
 
-        self.brain = brain
-        self.retrieval_config = retrieval_config
-        self.report = report
+        self.brain = session.brain
+        self.retrieval_config = session.retrieval_config
+        self.report = session.report
+        self.index_status = session.index
         self.conversation_labels = read_conversation_labels(self.account_dir)
 
     def answer(self, question: str) -> dict[str, Any]:

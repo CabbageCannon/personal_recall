@@ -60,19 +60,37 @@ def main() -> int:
         default=DEFAULT_PORT,
         help=f"the local port to listen on (default: {DEFAULT_PORT})",
     )
+    parser.add_argument(
+        "--index-dir",
+        type=Path,
+        default=None,
+        help="where the persistent retrieval index lives (default: beside the account export, "
+        "git-ignored); the CLI and the acceptance runner use the same default",
+    )
+    parser.add_argument(
+        "--rebuild-index",
+        action="store_true",
+        help="ignore a valid persistent index and rebuild it from the exports (~80 min on a real "
+        "account); without it a valid index is loaded and nothing is embedded",
+    )
     args = parser.parse_args()
 
     account_dir = args.account or Path(os.environ.get(ACCOUNT_ENV_VAR) or DEFAULT_ACCOUNT_DIR)
 
-    state = RecallState(account_dir=account_dir)
+    state = RecallState(
+        account_dir=account_dir, index_dir=args.index_dir, rebuild_index=args.rebuild_index
+    )
     print(f"account  : {account_dir}")
-    print("index    : building (parse + embed, once - this is the slow part)")
+    print("index    : loading the persistent index, or building it if it is not valid")
 
     started = perf_counter()
     state.load()
 
     if state.ready:
         report = state.report
+        # `build_account_session` decided and measured this; the server only prints it.
+        for line in state.index_status.lines():
+            print(f"index    : {line}")
         print(
             f"index    : {report.conversations_imported} conversation(s), "
             f"{report.messages_kept} message(s) in {perf_counter() - started:.1f}s"

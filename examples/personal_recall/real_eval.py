@@ -249,6 +249,17 @@ def main() -> int:
         type=Path,
         help="optional WeChat Msg/Multi directory for account completeness reporting",
     )
+    ap.add_argument(
+        "--index-dir",
+        type=Path,
+        help="account mode only: where the persistent index lives (default: "
+        "data/real/.index_cache/<account>); reuse it across runs so only the first one embeds",
+    )
+    ap.add_argument(
+        "--rebuild-index",
+        action="store_true",
+        help="account mode only: ignore a valid persistent index and rebuild it from the exports",
+    )
     ap.add_argument("--out", type=Path, default=BASE_DIR / "real_eval_results.json")
     ap.add_argument("--report-only", action="store_true", help="summarise --out without asking anything")
     ap.add_argument("--limit", type=int, default=None, help="only the first N questions")
@@ -298,10 +309,21 @@ def main() -> int:
     print(f"output    : {args.out}\n")
 
     kwargs = {"k": args.k} if args.k else {}
+    index_status = None
     if args.account:
-        brain, retrieval_config, account_report = build_account_session(
-            args.account, shard_dir=args.shard_dir, **kwargs
+        session = build_account_session(
+            args.account,
+            shard_dir=args.shard_dir,
+            index_dir=args.index_dir,
+            rebuild_index=args.rebuild_index,
+            **kwargs,
         )
+        brain, retrieval_config = session.brain, session.retrieval_config
+        account_report, index_status = session.report, session.index
+        # What the index cache did, then what was imported: counts and versions only, so a run log
+        # can be pasted without carrying a message, a name or a conversation id.
+        for line in index_status.lines():
+            print(f"  {line}")
         for line in account_report.lines():
             print(f"  {line}")
         print()

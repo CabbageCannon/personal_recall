@@ -17,6 +17,11 @@ data/real/
 .local/
 private/
 
+# the persistent retrieval index. It is derived from real chat — vectors AND the session text they
+# point at — so it is exactly as sensitive as the export it was built from. It is also derived: the
+# JSON export tree is still the source of truth, so losing it costs one rebuild and nothing else.
+.index_cache/
+
 # real corpora, by name (so an accidental export in data/ is still caught)
 real_*.txt
 my_chat*.txt
