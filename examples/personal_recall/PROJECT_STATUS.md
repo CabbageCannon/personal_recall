@@ -3929,3 +3929,57 @@ at most **500 records** (a higher `--limit` returns no more, and an over-large o
 of those 500 only one matches a direct conversation while all 141 groups do. The listing is
 predominantly chatrooms and group members, not the user's one-to-one contacts. That is an exporter-side
 limitation, recorded here for whoever picks it up; no workaround was attempted.
+
+## Targeted speaker re-eval (q07–q09) on v3
+
+The full 18-question run was deliberately skipped at the user's direction: the three
+`speaker_attribution` questions are this phase's actual regression target, and Phase 20.8C already
+measured that a sender-representation change moves no evidence at all on the other fifteen — so a
+second 100-minute index build would buy a confirmation, not information.
+
+### Representation, measured on the retrieved evidence
+
+Every speaker label appearing in the retrieved evidence lines for the three questions, counted by kind:
+
+| question | v2: `对方` / name / `成员X` | v3: `对方` / name / `成员X` |
+| -------- | -------------------------- | -------------------------- |
+| q07 | 360 / **0** / 0 | 19 / **347** / 5 |
+| q08 | 227 / **0** / 0 | 175 / 50 / 0 |
+| q09 | 157 / **0** / 0 | 21 / **117** / 5 |
+
+**The group evidence names who spoke.** q07 went from 0 named senders in its evidence to 347 named
+lines; q09 from 0 to 117. q08 moves less (50 of 225) because most of its evidence is one-to-one chat,
+where the label is `对方` by design and this phase deliberately did not change it.
+
+### Did the answers follow?
+
+A structural check — not a correctness judgement, which stays with the human labeller:
+
+| question | v2 | v3 |
+| -------- | -- | -- |
+| q07 | 0 named senders in evidence; answer says `对方` | **58 distinct named senders; the answer names one of them; it no longer says `对方`** |
+| q08 | 0; answer says `对方` | 11 named; the answer still says `对方` |
+| q09 | 0; answer says `对方` | **45 distinct named senders; the answer names one of them; it no longer says `对方`** |
+
+q07 and q09 previously answered that the record only labels everyone `对方` — which was true, and was
+the defect. They now name a person. **Whether it is the right person is not something this project
+asserts from an automated check**; that is the human label, and it is still `null`.
+
+### Signals and the confound
+
+```
+                        v2        v3
+citation mismatches      0         0
+invalid citations        0         0
+attribution flags        0         0
+silence claims           1         2      (q07 1->0, q08 0->2)
+evidence changed       —          3 / 3
+distinct conversations   9.0      10.0
+mean latency ms        61 974    65 593
+```
+
+Every question's evidence changed, and per the brief that change is **not** attributed wholesale to
+the sender fix: between the two exports the account also advanced (+5 292 messages, a coverage start 13
+days earlier, one new shard). What *is* directly attributable is the representation itself — the same
+kind of line that read `对方` in v2 reads a human name in v3, and there is no other candidate cause for
+that. Separating the two effects event-by-event was not attempted.
