@@ -4387,3 +4387,224 @@ from a 686 baseline.
   published — the sync goes through the same `exporter` seam and its tests use a fake CLI — but the real
   acceptance above ran against that build.
 * **PostgreSQL and pgvector have not been started**, by explicit decision.
+
+---
+
+# Phase 22A — PostgreSQL canonical memory store
+
+**Scope.** Persist the memory layer Personal Recall already produces — `MemoryEvent`, `MemoryChunk`,
+conversation and participant identity — as a structured, incrementally updatable, transactional
+PostgreSQL store. Nothing here touches retrieval: no pgvector, no vector column, no metadata filter,
+no query planner. FAISS, BM25, weighted RRF, `k`, the pool, chunking, prompts, sender labels and the
+persistent index are exactly as Phase 21B left them, and a machine with no PostgreSQL still answers
+questions.
+
+## Status
+
+| requirement | state |
+| ----------- | ----- |
+| schema migration creates the store from an empty database | ✅ `001_initial_memory_store.sql`, tracked, applied once, version-checked in both directions |
+| `MemoryEvent` / `MemoryChunk` round-trip losslessly | ✅ §24/§25 cases incl. unicode, emoji, 2 KB bodies, replies, absence of identity |
+| full-account counts match the normalized importer exactly | ✅ 281 / 1,632,344 / 81,672 — the same numbers the persistent index reports |
+| person identity cannot collapse on a shared display name | ✅ identity-keyed digest; **169** shared names on the real account stay 169 separate people |
+| a direct conversation's peer never merges across conversations | ✅ 65 `direct_peer` rows, one per conversation, never a shared `对方` |
+| chunk → event evidence order fully recoverable | ✅ 1,632,344 links, ordinals unique, 0 events without a chunk |
+| same snapshot bootstraps idempotently | ✅ refused unless `--rebuild-postgres`; rebuild reproduces identical rows |
+| Phase 21B affected conversations sync transactionally | ✅ one transaction per sync; the store derives its own delta with 21B's classifier |
+| incremental result equals a fresh bootstrap | ✅ bounded real data **and** real full-account data |
+| crash rollback leaves no half-generation | ✅ 8 injection points × bootstrap and sync, all rolled back |
+| PostgreSQL failure does not break retrieval | ✅ nothing on the retrieval path opens a connection |
+| current 6-query retrieval exact parity | ✅ 6/6 vs the Phase 21B reference generation |
+| regression | ✅ see below |
+| real PostgreSQL integration tests | ✅ 73 tests against a live server, not mocks |
+| full real account acceptance | ✅ below |
+
+## Why PostgreSQL, and what it is not
+
+Two layers of source of truth now exist and the order between them matters. The **raw** layer is the
+WeChat databases and the WeFlow export tree — the history, never deleted, the thing everything is
+rebuilt from. The **structured** layer is this store: the same memory, normalized once, written into
+tables that can answer *what did this person say, in this conversation, between these dates, in this
+order*.
+
+The store is **derived**. Drop it and rebuild it from the exports at any time; nothing is written
+only there. It is also **not a retrieval backend**: `build_account_session` still loads FAISS and BM25
+and fuses them with RRF, and the store is not consulted for a single answer.
+
+## Runtime
+
+| | |
+| --- | --- |
+| server | PostgreSQL 16.15 (Debian), `docker-compose.postgres.yml`, loopback `127.0.0.1:55432` |
+| storage | a **bind mount on `D:`** (`D:/personal_recall_pgdata`), not Docker's data root on `C:` |
+| driver | `psycopg` 3.3.6 — one DB access path, no ORM, no Alembic |
+| migrations | numbered `.sql` files beside `memory_store/schema.py`, recorded in `schema_migrations` |
+| bulk path | `COPY … FROM STDIN`; never a row-at-a-time `INSERT` |
+
+A container rather than an installed server: the store has to be creatable, droppable and reproducible
+without touching a PostgreSQL the user may already run for something else. It publishes on loopback
+only, installs no service and edits no `PATH`.
+
+## Schema
+
+`conversations` · `people` · `conversation_people` · `memory_events` · `memory_chunks` · `chunk_events`
+· `source_inventory` · `memory_store_state` · `schema_migrations`.
+
+`memory_events` keeps `speaker_id`, `speaker_display` and `sender_name` as three separate columns —
+the same three facts `memory.events` separates, kept separate all the way down. `chunk_events` is a
+real relation rather than an embedded id list, so the evidence behind a retrieval unit is a join.
+
+**Timestamps are `TIMESTAMP WITHOUT TIME ZONE`.** The contract's chat times are naive local wall
+clocks, and `TIMESTAMPTZ` was measured and rejected: the same stored value read back under
+`Asia/Shanghai` moves by eight hours, because a naive value has no zone to be interpreted in. Under
+`TIMESTAMP` the wall clock survives every session timezone; a test holds the store to that under
+three of them. The exporter's own `createTime` is kept verbatim alongside, so the true instant is
+never reconstructed from a wall clock.
+
+## Identity
+
+`person_id` is a digest of the source identity, never a surrogate key and never a display name, which
+is why a name collision cannot merge two people — structurally, not by a rule someone could forget.
+
+| | real account |
+| --- | --- |
+| conversations with a human-readable label | 131 / 281 |
+| events with a trustworthy speaker | 1,350,570 / 1,632,344 (82.8%) |
+| `group_member` people | 5,019 |
+| `direct_peer` people | 65 |
+| people in more than one conversation | 384 |
+| **names shared by several people** | **169** — and 169 separate rows |
+
+A direct conversation's peer is its own talker. Measured, not assumed: 131 of 140 direct talkers are
+`wxid_*`, 134 of 140 state it again in the message field with **zero** contradictions, and 73 appear
+verbatim as a group member's identity — so a direct chat and a group chat about the same person resolve
+to the same row. The forbidden alternative this replaces is one shared `对方` person that would merge
+every direct conversation into one stranger.
+
+## Full-account acceptance
+
+Built from the export tree as it stood after a real WeChat sync.
+
+| | |
+| --- | --- |
+| conversations | 281 |
+| events | 1,632,344 |
+| chunks | 81,672 |
+| people / memberships | 5,084 / 5,740 |
+| inventory entries | 637 |
+| event range | 2019-08-13 … 2026-09-23 |
+| database size | 2.2 GiB after bootstrap |
+
+`COPY` split: events **764 s**, chunk_events **524 s**, chunks **102 s**, people+memberships+state
+**7 s** — **1,416,740 ms total**, 25.7 min wall clock including the export parse.
+
+Referential integrity, checked on the real store rather than asserted: 0 links to missing events,
+0 links to missing chunks, **0 events with no chunk**, ordinals unique within every chunk, 0 orphan
+people, 0 character-count mismatches, 0 chunk-metadata mismatches.
+
+## Incremental update
+
+The unit is the **conversation**, never the message. A new message can replace the tail chunk it
+joined; a member gaining a display name renames messages the delta never touched; a session boundary
+that moves renumbers the chunks after it. Appending what is new is therefore not an update — it is a
+different store.
+
+The store keeps **its own record of the export files its generation was built from** (`source_inventory`),
+so it computes its delta with Phase 21B's own classifier, from its own base, without borrowing the
+sync checkpoint. The checkpoint describes one generation and is advanced by whichever consumer runs
+first; an index run would overwrite the store's base and vice versa. Independent on real data:
+after a real WeChat sync moved 11 conversations, `--sync-postgres` reported **the same 11
+conversations** the index had.
+
+| real full-account incremental | |
+| --- | --- |
+| conversations rewritten | 1 (from a real mtime move: 127,411 events, 4,551 chunks) |
+| delete phase | **3.6 s** |
+| events `COPY` | 42.9 s |
+| chunk_events `COPY` | 20.4 s |
+| **transaction total** | **73.5 s**, generation 1 → 2 |
+| no-op sync | `source is identical to the stored generation; nothing to do` |
+
+Idempotence on real data: touching a real export and syncing **twice** reproduced byte-identical rows
+for that conversation both times, with the store's counts unchanged and the generation advancing.
+Re-rendering a real 127k-event conversation is deterministic.
+
+Bounded real acceptance (§32) over four real conversation shapes — direct, small group, multi-shard
+group, 8+ member group — with a synthetic delta: 34,100 events, 2,295 chunks, **0 crossed-conversation
+chunks**, 2,295/2,295 chunks with complete ordered evidence, and `incremental == fresh bootstrap` row
+for row across all six tables.
+
+## Structured query smoke
+
+Read-only, on the full store, counts and milliseconds only — no text, no name, no identifier.
+
+| query | rows | ms |
+| --- | --- | --- |
+| conversation → events | 526,966 | 311 |
+| time range → events | 908,572 | 2,802 |
+| **person → events** | 93,904 | **15** |
+| conversation + time → events | 526,966 | 64 |
+| chunk → evidence, in order | 37 | 32 |
+
+The time-range query is a full scan because no filter bounds it; that is a property of the query, not
+of the store. The indexed paths — person, conversation, chunk evidence — are the ones a metadata
+filter would use.
+
+## Two defects real data found that fixtures did not
+
+**`chunk_events.event_id` had no index.** PostgreSQL does not create one for a foreign key, and the
+primary key is `(chunk_id, event_id)`, which cannot answer *which links cite this event*. Replacing
+11 conversations made the cascade from `memory_events` sequentially scan the whole 1.6M-row table
+once per deleted event: **25 minutes and still running** on the real account. With the index the same
+operation is **3.6 s**. A test now asserts that every foreign key has an index on its referencing
+column — the general form of what went wrong.
+
+**A container's `/dev/shm` defaults to 64 MB.** A whole-account integrity check failed with
+`could not resize shared memory segment … No space left on device` — a disk-space error for something
+that is not a disk. `shm_size: 1gb`.
+
+## Crash safety
+
+One transaction per write. Failure injected at eight named points inside a bootstrap and inside a
+sync, plus a real one nobody arranged: a sync over the full account was killed mid-delete, and the
+store came back at its previous generation with its counts intact. After the kill PostgreSQL **kept
+executing the abandoned statement** for 25 minutes, holding locks that blocked a schema drop — a
+reminder that a client dying does not stop a server-side delete.
+
+## Tests
+
+| | before | after |
+| --- | --- | --- |
+| whole suite | 727 | **821** |
+| ordinary suite (`pytest -m "not postgres"`) | 727 | **747** |
+| PostgreSQL integration (`pytest -m postgres`) | — | **74** |
+
+The 74 run against a **live server**, each in a schema it creates and drops, and the rest of the
+suite runs on a machine with no PostgreSQL at all — the module *skips* rather than fails when the
+server is unreachable, because a suite that fails because a container is down reports nothing about
+the code. The projection tests are deliberately unmarked: the properties they check must hold
+everywhere, not only where a container happens to be running. Splitting it this way is what makes
+"the store works" and "the product works without a store" two separate claims rather than one.
+
+One gap worth recording: the three failures this phase's own tests caught were found by running the
+**whole** suite, not by running the two new files. Twenty projection tests and seventy-four database
+tests were green while a change to `TABLE_COLUMNS` had broken an assertion in a file neither command
+touched.
+
+## Privacy
+
+The database holds real chat text and real identities, and is a local private store, like the index
+cache. What must never leave it is narrower and enforced: connection strings come only from
+`PERSONAL_RECALL_DATABASE_URL` (`.env`, git-ignored; `.env.example` holds placeholders), the loggable
+form of a target carries host/port/database and never credentials, an unparsable URL is reported as
+unparsable rather than echoed, every operator command prints counts and fingerprints only, and
+`PROJECT_STATUS.md` carries aggregates. The tests use synthetic identities shaped like real ones —
+`wxid_synthetic_*`, `NNNN@chatroom` — and a scan confirmed no real conversation id, wxid or chatroom
+appears in any file this phase adds.
+
+## Retrieval unchanged
+
+The frozen six-query probe, run after Phase 22A against the same index generation Phase 21B finished
+on (81,656 documents): **6/6 exact parity** — same order, same set, same citation metadata, same
+content digests. Phase 22A changed no retrieval code, and the measurement says so rather than the
+claim.

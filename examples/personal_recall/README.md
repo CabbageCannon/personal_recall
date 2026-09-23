@@ -277,7 +277,43 @@ The default real-data path is account-wide: it calls the same `build_account_ses
 `answer_question()` used by the product. `--corpus` remains available for the older single-conversation
 or merged-shard acceptance runs.
 
-## 6. Reproduce the measurements
+## 6. The structured memory store (PostgreSQL)
+
+The retrieval index answers *"what resembles this question"*. This answers *"what did this person say,
+in this conversation, between these two dates, in this order"* — the same memory, normalized once and
+written into tables you can join.
+
+It is **optional and off the retrieval path**. `recall.py` and `web.py` never open a database; a
+machine with no PostgreSQL answers questions exactly as before. Nothing here is required to ask a
+question, and nothing here changes what retrieval does.
+
+```bash
+docker compose -f docker-compose.postgres.yml up -d     # a local, loopback-only PostgreSQL
+cp .env.example ../../.env                              # then fill in PERSONAL_RECALL_DATABASE_URL
+
+python store_admin.py --account data/real/account_full_v3 --bootstrap-postgres
+python store_admin.py --account data/real/account_full_v3 --status
+python store_admin.py --account data/real/account_full_v3 --sync-postgres
+```
+
+`--bootstrap-postgres` writes the whole account (~19 min for 1.6M messages, most of it the export
+parse). `--sync-postgres` advances it over only the conversations that moved, in one transaction, and
+refuses rather than half-applies anything it cannot prove safe — a deleted export, a changed chunking
+setting, a struct-of-rules mismatch all end in `--rebuild-postgres`, not in a guess. `--status`
+prints counts, coverage and identity aggregates; `--smoke` runs the five structured queries and
+reports counts and milliseconds.
+
+Two tables are worth knowing about if you write your own queries: `memory_events` (one row per
+message, with `speaker_id` / `speaker_display` / `sender_name` deliberately kept as three separate
+columns) and `chunk_events` (the ordered evidence behind each retrieval unit). `people.person_id` is a
+digest of the source identity, so two members of one group who display the same name are two rows and
+cannot collapse into one.
+
+The database holds real chat text and real identities. It is a **local private store**, like the index
+cache: keep it off any shared machine, and never commit its connection string — `.env` is git-ignored
+and `.env.example` holds placeholders only.
+
+## 7. Reproduce the measurements
 Everything in `PROJECT_STATUS.md` is regenerable. Retrieval is deterministic under `--workflow
 no-rewrite`, which is what makes these comparisons exact rather than statistical.
 
@@ -323,6 +359,9 @@ Known limits, all recorded with numbers in `PROJECT_STATUS.md`:
 | `web.py`, `webapp/` | the local web UI: the same answer, in a browser |
 | `export_account.py` | WeChat account → the export tree both front ends read |
 | `sync_conversation_labels.py` | exporter's contact names → the evidence-card headers |
+| `store_admin.py` | manage the PostgreSQL canonical memory store (bootstrap / sync / status) |
+| `memory_store/` | that store: schema + migrations, the event→row projection, and its only SQL |
+| `docker-compose.postgres.yml` | a local, loopback-only PostgreSQL for development and tests |
 | `audit_account.py` | export tree → completeness and boundary report, no model needed |
 | `chat_import.py` | real export → canonical corpus |
 | `groundedness.py` | gold-free caveats shown by the product |
