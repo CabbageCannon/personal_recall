@@ -4223,3 +4223,167 @@ already loaded.
   at load time — loud, never a silent wrong answer.
 * **One entry per account, keyed by a digest of the account path**, so two accounts cannot share one,
   and a renamed account gets a fresh entry rather than a stale hit.
+
+---
+
+# Phase 21B — Incremental WeChat sync and incremental index update
+
+Phase 21A made an unchanged source load in 3.1 s with zero embeddings. Any change to the source, though,
+invalidated everything: a full re-import and **81 576 chunks re-embedded, 71.7 minutes**. This phase
+makes a small delta cost a small amount of work, and proves the result is the same one a clean rebuild
+would have produced.
+
+## The repository
+
+`CabbageCannon/quivr` was renamed to **`CabbageCannon/personal_recall`** with the GitHub rename API, so
+it is the same repository — commits, branches, issues, history — under a new name, and the old URL still
+redirects. The local `origin` was repointed at the new URL rather than relying on that redirect. Only
+the one line naming the repository changed; Quivr attribution and the `quivr_core` package name are
+untouched, because Personal Recall is still built on Quivr and that is not what the rename was about.
+
+## What the exporter can actually do
+
+Measured against the patched CLI (`213458c`), before designing anything:
+
+| | result |
+| --- | --- |
+| `export <talker> json --from <date> --to <date>` | **works** — a windowed export of an active conversation returned 5 557 messages |
+| `sessions --json` | carries `lastTimestamp` per conversation — a **free change signal**, no message body needed |
+| exports must repoint the shard | yes: a conversation lives in one or more of the 12 `MSG*.db` files and one export reads one shard |
+| an empty window | returns `EXPORT_FAILED 未找到消息` — **an error, not an empty set**, so "nothing new" must be handled as a no-op |
+| `capabilities` advertises coverage fields (`mayHaveMore`, `oldestCreateTime`, …) | **the CLI does not emit them** (`{contract, count, format, path, success}` only) — nothing was built on them |
+| a stable cursor | explicitly absent: `"incrementalRead": {"mode": "overlapping-time-window", "stableCursor": false}` |
+
+**Chosen strategy: conversation-level refresh, driven by a message-level time window.** Detection is
+cheap (`lastTimestamp` versus the checkpoint); only conversations that moved are exported, and only for
+the window since the checkpoint plus a deliberate overlap — the exporter documents an overlapping window
+with no stable cursor, so boundary duplicates are expected and the existing `serverId` dedupe is what
+makes them harmless. History is never re-exported: the delta is merged into the existing export file.
+This is **not** a row-level cursor, and the record says so rather than implying one.
+
+## Architecture
+
+```
+WeChat MSG*.db
+   -> discover shards (every run; 11 became 12 once already)
+   -> sessions --json per shard -> lastTimestamp per conversation
+   -> diff against the checkpoint -> affected conversations
+   -> export only those windows, into staging
+   -> merge into the export tree (union by serverId, ordered by createTime)
+   -> re-render the WHOLE affected conversation (all its shards, re-merged, re-sessionized)
+   -> diff chunks -> reuse unchanged vectors -> embed only changed/new
+   -> FAISS.from_embeddings -> verify -> atomic promote -> checkpoint LAST
+```
+
+One seam, layered: `recall.build_account_session` to `sync_wechat.sync_account_source` to
+`incremental_index.update_account_index`. The CLI, the web app and the acceptance runner all reach it;
+a plain `--account` never touches the WeChat database, so offline corpora and CI keep working. Sync is
+opt-in (`--sync-wechat --multi-dir ... --incremental-index`).
+
+**A conversation is the unit of work, never a shard.** A conversation changed in `MSG0` may also live in
+`MSG1`; rebuilding only the changed shard would sort fewer rows, let `serverId` dedupe see fewer copies,
+and let the sender-labelling pass see less evidence — a *different* index, not a cheaper one. So all of
+the conversation's files are reloaded and the whole conversation re-rendered, which also handles the two
+effects that make "append the new message" wrong: a message inside `max_gap` **replaces the tail chunk**
+rather than extending it, and a new `senderDisplay` can retroactively relabel a speaker's earlier
+messages.
+
+**Vector reuse.** A chunk is unchanged when its identity and exact projected text agree
+(`chunk_id | conversation_id | sha256(page_content)`). Unchanged chunks take their vectors from the old
+index (`reconstruct_n` in `index_to_docstore_id` order — verified on the real cache that position `i` is
+the document's own vector) and `FAISS.from_embeddings` rebuilds the structure around them, which does
+**not** call `embed_documents`. Only the rest are embedded. The reuse key deliberately excludes
+`chunk_index` / `sessions_total`, which are account-global and recomputed.
+
+## Real account: what actually happened
+
+| run | outcome |
+| --- | --- |
+| **1st sync** (existing 21A index, never synced) | exported the deltas, then **refused to advance incrementally** — *"no checkpoint: this tree has never been synced, so the base of the delta is unknown"* — and did a full rebuild: **81 633 chunks, 43.2 min** |
+| **2nd sync**, minutes later | **`INDEX CACHE INCREMENTAL (12 conversation(s) moved)` — 81 656 chunks, 81 629 reused, 27 embedded, total 38.0 s** (embed 1.07 s) |
+| **3rd sync**, minutes later | **`INDEX CACHE HIT`, 0 chunks embedded, 1.02 s load** |
+
+The first run is the phase's most useful negative result and it is **correct behaviour, not a bug**: an
+index with no checkpoint has no known base, and advancing it incrementally would mean inventing one. The
+cost is that adopting a Phase 21A index pays exactly one full rebuild before incremental begins —
+recorded as a limitation below rather than hidden.
+
+The corpus moved forward by **1 168 messages** (1 630 452 to 1 631 620) in the day between the Phase 20.9
+export and the first sync.
+
+**A real crash test, unplanned.** The first sync was killed mid-export by the environment. The staging
+directory was left behind and the promoted generation was **completely untouched** — the next warm start
+reported `INDEX CACHE HIT ... 0 chunks embedded` against the pre-sync index. That is Test Q happening
+for real rather than in a fixture.
+
+## Incremental == clean rebuild, on real data
+
+The strongest available check was run rather than argued: a clean full rebuild of the *same* source into
+a separate index directory (43 min), compared against the incrementally-updated index.
+
+```
+                incremental     full-rebuild
+documents             81656            81656
+
+query     sources  same order  same set  metadata  content
+q07            20        True      True      True     True
+q09            20        True      True      True     True
+q01            20        True      True      True     True
+q04            20        True      True      True     True
+q10            20        True      True      True     True
+q17            20        True      True      True     True
+
+EXACT PARITY: True
+```
+
+An index assembled from 81 629 reused vectors and 27 new ones retrieves **identically** — same documents
+in the same order, same citation metadata, same content — to one that embedded all 81 656.
+
+## Performance
+
+| | old behaviour (any source change) | incremental |
+| --- | --- | --- |
+| affected conversations | — | 12 |
+| chunks | 81 576 re-embedded | 81 656 total, **81 629 reused, 27 embedded** |
+| embedding | 70.9 min (Phase 21A) / 43.2 min (21B full fallback) | **1.07 s** |
+| total | 71.7 min | **38.0 s** |
+| no-op sync | 3.1 s (cache hit) | **1.02 s load, 0 embedded** |
+
+**27 of 81 656 chunks — 0.03 % of the corpus — were embedded for that delta.**
+
+## Classification and fail-closed
+
+`NO_CHANGE` means cache hit. `SAFE_INCREMENTAL_CHANGE` means incremental. Everything else is
+`UNSAFE_CHANGE`, which never advances: a missing manifest, an unusable or other-generation checkpoint,
+an unwalkable tree, a file whose conversation cannot be established, a file that disappeared, a shard
+with no export, a change attributable to no conversation. A structural change — chunking config,
+embedding model or normalisation, projection version, cache format — forces a full rebuild, while `k`,
+`hybrid_pool`, `workflow`, the prompt and every LLM setting deliberately do not.
+
+## Tests
+
+41 new tests in `tests/test_incremental_sync.py`, covering the no-op, append, tail-merge and new-chunk
+cases, a new conversation, a conversation spanning two shards, a new shard, re-sent `serverId`s, an
+edited message, retroactive display labels, the config matrix both ways, crash safety, corruption and
+fail-closed refusals, and the golden incremental-vs-clean-rebuild comparison. Full suite **727 passed**,
+from a 686 baseline.
+
+## Known limitations
+
+* **Adopting an un-synced index costs one full rebuild.** The first sync after a Phase 21A build has no
+  checkpoint, so it cannot advance incrementally — correct, but the cost should be expected. A future
+  phase could baseline a checkpoint from a verified `HIT`.
+* **Sync granularity is conversation-level, not row-level.** The window bounds what is *fetched*; the
+  unit of *re-import* is the conversation, because a conversation's chunks depend on its whole history
+  and its whole-history sender labels.
+* **An edited old message inside the window is picked up; one outside it is not.** The window is the
+  contract, and the exporter offers no change feed to do better.
+* **A deleted export file is refused, not handled.** It is classified `UNSAFE` and falls back to a full
+  rebuild rather than silently dropping history.
+* **`FAISS.load_local` still unpickles `index.pkl`.** The trust boundary is unchanged from Phase 21A:
+  the index directory holds the chat text and must stay local and git-ignored.
+* **BM25 is still rebuilt on first query** (about 12 s), from the updated docstore.
+* **The patched exporter is a local, unpushed build** (`213458c`). Nothing here depends on it being
+  published — the sync goes through the same `exporter` seam and its tests use a fake CLI — but the real
+  acceptance above ran against that build.
+* **PostgreSQL and pgvector have not been started**, by explicit decision.
