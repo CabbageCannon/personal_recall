@@ -172,8 +172,16 @@ def classify_source_change(
     state_error: str = "",
     missing_shards: Sequence[str] = (),
     unsafe_reasons: Sequence[str] = (),
+    base_source_fingerprint: str | None = None,
 ) -> Classification:
     """Decide whether a moved source may be advanced in place. Never raises for a refusal.
+
+    ``base_source_fingerprint`` names the generation being advanced *from*, for a caller whose
+    generation is not an index manifest — the canonical memory store records the same fingerprint in
+    ``memory_store_state``, and the rules that decide whether a delta is safe do not change because
+    the thing being advanced writes rows instead of vectors. Supplying it is what lets the store use
+    this function rather than a second copy of it (§16). Omitted, the base is the inspected
+    manifest, exactly as before.
 
     The order is from the most decisive to the most expensive, and every step refuses rather than
     guesses:
@@ -215,17 +223,22 @@ def classify_source_change(
         # under different rules and reusing them would produce an index no rebuild would ever make.
         return Classification(UNSAFE_CHANGE, inspection.reason or "the stored entry is unusable")
 
-    if inspection.manifest is None:
-        return Classification(UNSAFE_CHANGE, "the stored generation's manifest is unavailable")
+    base = base_source_fingerprint
+    if base is None:
+        if inspection.manifest is None:
+            return Classification(UNSAFE_CHANGE, "the stored generation's manifest is unavailable")
+        base = inspection.manifest.source_fingerprint
+    if not base:
+        return Classification(UNSAFE_CHANGE, "the stored generation has no source fingerprint")
 
     if state_error:
         return Classification(UNSAFE_CHANGE, f"the checkpoint is unusable ({state_error})")
-    if state is None:
+    if state is None and base_source_fingerprint is None:
         return Classification(
             UNSAFE_CHANGE,
             "no checkpoint: this tree has never been synced, so the base of the delta is unknown",
         )
-    if state.index_source_fingerprint != inspection.manifest.source_fingerprint:
+    if state is not None and state.index_source_fingerprint != base:
         return Classification(
             UNSAFE_CHANGE,
             "the checkpoint describes a different generation than the index was built from",
@@ -419,14 +432,29 @@ class IncrementalResult:
         }
 
 
-def reimport_conversations(
+@dataclass(frozen=True)
+class ReimportedConversations:
+    """The whole-conversation re-render, in every form its callers need.
+
+    The retrieval index wants the chunks; the canonical memory store wants the events as well, and
+    both must come from **this one** render. Two callers each re-deriving "the current state of these
+    conversations" is exactly how an index and a database start disagreeing about the same account,
+    so the events stay attached to the chunks they produced rather than being re-imported next door.
+    """
+
+    events_by_conversation: dict[str, list[Any]]
+    chunks: list[Any]
+    descriptors: tuple[Any, ...] = ()
+
+
+def reimport_events(
     account_dir: Path,
     conversation_ids: Sequence[str],
     *,
     shard_dir: Path | None = None,
     session_config: SessionConfig,
-) -> list[Any]:
-    """Re-render whole conversations from **every** shard they appear in.
+) -> ReimportedConversations:
+    """Re-render whole conversations from **every** shard they appear in, events and chunks together.
 
     The hard requirement, in code: the exports are selected by conversation (not by the shard whose
     file moved), passed to the same importer the full build uses, and sessionised by the same
@@ -447,7 +475,24 @@ def reimport_conversations(
             "conversation boundary crossed: chunk(s) "
             f"{list(crossed)} mix events from more than one conversation"
         )
-    return chunks
+    return ReimportedConversations(
+        events_by_conversation={k: list(v) for k, v in events_by_conversation.items()},
+        chunks=list(chunks),
+        descriptors=tuple(layout.descriptors),
+    )
+
+
+def reimport_conversations(
+    account_dir: Path,
+    conversation_ids: Sequence[str],
+    *,
+    shard_dir: Path | None = None,
+    session_config: SessionConfig,
+) -> list[Any]:
+    """The chunks of a whole-conversation re-render. See :func:`reimport_events`."""
+    return reimport_events(
+        account_dir, conversation_ids, shard_dir=shard_dir, session_config=session_config
+    ).chunks
 
 
 def update_account_index(

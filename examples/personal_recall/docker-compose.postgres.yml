@@ -1,0 +1,54 @@
+# A PostgreSQL for Phase 22A's canonical memory store, isolated from anything else on this machine.
+#
+# Why a container rather than an installed server: the store is a *project* artifact that has to be
+# creatable, droppable and reproducible on demand, and it must not touch a PostgreSQL the user may
+# already run for something else (§5). This file installs no service, edits no PATH and binds no
+# port on the LAN — it publishes 127.0.0.1 only, like the web UI (`webapp.HOST`).
+#
+#   docker compose -f docker-compose.postgres.yml up -d
+#   docker compose -f docker-compose.postgres.yml down          # keeps the volume
+#   docker compose -f docker-compose.postgres.yml down -v       # destroys the store
+#
+# The password here is a *development* credential for a loopback-only database and is deliberately
+# not a secret: it grants nothing that is not already reachable by anything running on this machine.
+# The real connection string lives in `.env`, is git-ignored, and is the only thing the code reads.
+services:
+  postgres:
+    image: postgres:16
+    container_name: personal_recall_pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: personal_recall
+      POSTGRES_PASSWORD: personal_recall_local
+      POSTGRES_DB: personal_recall
+      # The store is built and read by one client on this machine; the default locale-dependent
+      # collation would make index behaviour depend on the host image's locale.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "127.0.0.1:55432:5432"
+    # A container's /dev/shm defaults to 64 MB, and PostgreSQL uses it for the shared-memory
+    # segments behind a large sort or hash join. A whole-account integrity check over 1.6M events
+    # failed with "could not resize shared memory segment ... No space left on device" — a disk-space
+    # error message for something that is not a disk. The default is fine for querying a store; it is
+    # not fine for auditing one.
+    shm_size: 1gb
+    volumes:
+      # On the D: drive, not in Docker's own data root on C:. The store is hundreds of megabytes and
+      # grows with the account; a development machine's system disk is not where a database belongs.
+      # A host bind mount rather than a named volume, so the files are visible and a deleted
+      # container does not silently take the store with it.
+      - type: bind
+        source: D:/personal_recall_pgdata
+        target: /var/lib/postgresql/data
+    # Bulk-loading 1.6M rows is I/O bound; the defaults are tuned for a much smaller working set.
+    # `fsync=off` is acceptable *here only* because this container is a rebuildable cache over a raw
+    # export that is never deleted: a crash costs a re-bootstrap, not data.
+    command: >
+      postgres
+      -c shared_buffers=1GB
+      -c maintenance_work_mem=512MB
+      -c work_mem=64MB
+      -c max_wal_size=8GB
+      -c synchronous_commit=off
+      -c fsync=off
+      -c full_page_writes=off
