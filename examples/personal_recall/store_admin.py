@@ -203,6 +203,12 @@ def main() -> int:
         help="advance the store over the conversations that moved, in one transaction. Falls back to "
         "nothing: an unsafe change is refused and reported, never half-applied",
     )
+    action.add_argument(
+        "--import-vectors",
+        action="store_true",
+        help="copy the retrieval index's existing chunk vectors into the store, matched by text "
+        "digest. Embeds nothing unless a chunk genuinely has no vector anywhere",
+    )
     action.add_argument("--status", action="store_true", help="what this store holds, in aggregates")
     action.add_argument(
         "--smoke",
@@ -237,6 +243,36 @@ def main() -> int:
                 print(json.dumps(_report(store), ensure_ascii=False, indent=2, default=str))
             else:
                 _print_status(store)
+            return EXIT_OK
+
+        if args.import_vectors:
+            cache_dir = index_cache.account_cache_dir(account_dir, args.index_dir)
+            if not (cache_dir / index_cache.MANIFEST_FILENAME).exists():
+                print(
+                    f"error: no persistent index at {cache_dir}; build one first (recall.py "
+                    "--account ...), because this copies vectors rather than computing them",
+                    file=sys.stderr,
+                )
+                return EXIT_ERROR
+            if not args.json:
+                print(f"target   : {store.target.describe()}")
+                print("vectors  : loading the retrieval index to read its existing vectors")
+            started = perf_counter()
+            embedder = index_cache.build_embedder()
+            vector_store = index_cache.load_store(cache_dir, embedder)
+            report = memory_store.vectors.import_vectors(store, vector_store=vector_store)
+            if args.json:
+                print(json.dumps(report.as_dict(), ensure_ascii=False, indent=2, default=str))
+            else:
+                for line in report.lines():
+                    print(f"  {line}")
+                print(f"  vectors        : wall clock {(perf_counter() - started):.1f}s")
+                if not report.aligned:
+                    print(
+                        "note     : the index and the store are not fully aligned; the counts above "
+                        "say how, and nothing misaligned was written",
+                        file=sys.stderr,
+                    )
             return EXIT_OK
 
         if args.smoke:

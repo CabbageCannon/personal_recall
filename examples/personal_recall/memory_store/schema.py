@@ -20,7 +20,10 @@ from typing import Sequence
 #: The schema version this build of the code knows how to read and write. Bump it in the same commit
 #: as the migration that changes it; a database that disagrees then fails loudly instead of being
 #: queried with the wrong column list (§23 Test E).
-SCHEMA_VERSION = 1
+#:
+#: 1 — the canonical memory store (Phase 22A).
+#: 2 — `memory_chunks.embedding` + its HNSW index (Phase 22B).
+SCHEMA_VERSION = 2
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 

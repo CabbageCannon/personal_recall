@@ -814,6 +814,167 @@ def build_account_session(
 
 
 # ---------------------------------------------------------------------------------------------
+# The PostgreSQL retrieval backend
+# ---------------------------------------------------------------------------------------------
+
+
+@dataclass
+class PostgresSession:
+    """A retrieval session backed by the canonical store rather than by the FAISS index.
+
+    Deliberately not an :class:`AccountSession`: that type reports *what the persistent index did* —
+    a cache outcome, an embedding count, a load time — and none of those questions exist here. Vectors
+    arrive by import, not by building, so there is no cache to hit and nothing to embed. Reporting
+    "0 chunks embedded" for a backend that never embeds would be a true sentence about the wrong thing.
+    """
+
+    brain: Brain
+    retrieval_config: RetrievalConfig
+    vector_store: Any
+    store: Any
+    #: Embedding coverage and candidate counts — the numbers this backend is judged by.
+    coverage: dict[str, Any]
+
+    def lines(self) -> list[str]:
+        """Aggregates only: counts, dimensions and timings, never a chunk or a person."""
+        out = [
+            "backend        : postgres/pgvector over the canonical store",
+            f"vectors        : {self.coverage.get('with_vector', 0)}/"
+            f"{self.coverage.get('chunks', 0)} chunk(s) carry a vector "
+            f"(dimension {self.coverage.get('dimension', 0)})",
+        ]
+        if self.coverage.get("filter"):
+            out.append(f"candidates     : {self.coverage['filtered_candidates']} of "
+                       f"{self.coverage['global_candidates']} chunk(s) "
+                       f"({self.coverage['reduction'] * 100:.1f}% narrowed) by "
+                       f"{self.coverage['filter']}")
+        return out
+
+
+def build_postgres_session(
+    account_dir: Path,
+    *,
+    postgres_url: str | None = None,
+    store_name: str | None = None,
+    filters: Any = None,
+    k: int = DEFAULT_K,
+    hybrid_pool: int = DEFAULT_HYBRID_POOL,
+    workflow: str = "no-rewrite",
+    answer_prompt: str = DEFAULT_ANSWER_PROMPT,
+    max_output_tokens: int = 8192,
+    temperature: float = 0.0,
+    embedder: Any = None,
+) -> PostgresSession:
+    """Retrieve from PostgreSQL + pgvector instead of from FAISS, with the same fusion on top.
+
+    The whole backend switch, and it is small on purpose: the dense retriever and the document list
+    come from the store, and everything after them — BM25, weighted RRF, the prompt, the workflow —
+    is the code that was already being measured. A second fusion implementation would make the two
+    backends incomparable, which is the one thing this phase needs them to be.
+
+    ``filters`` narrows the search *before* either retriever runs. It is a
+    :class:`memory_store.RetrievalFilter`; an empty one searches the whole account.
+
+    Imports the store lazily. Personal Recall must keep working on a machine with no PostgreSQL and no
+    psycopg, and a module-level import here would make the database a requirement for asking a
+    question — the thing Phase 22A was careful not to do.
+    """
+    from memory_store import PostgresMemoryStore, PostgresVectorStore, target_for
+    from memory_store import candidate_report
+
+    account_dir = Path(account_dir)
+    target = target_for(account_dir, url=postgres_url, store_name=store_name)
+    store = PostgresMemoryStore.open(target)
+    embedder = embedder or index_cache.build_embedder()
+
+    vector_store = PostgresVectorStore(
+        store, embedder, origin=f"account:{account_dir.name}", filters=filters
+    )
+    register_answer_prompt(answer_prompt)
+    llm_config = build_llm_config(max_output_tokens=max_output_tokens, temperature=temperature)
+    retrieval_config = build_retrieval_config(
+        llm_config, k=k, hybrid_pool=hybrid_pool, workflow=workflow
+    )
+    brain = build_brain_from_vector_store(
+        vector_store, llm_config, f"personal_recall_account_{account_dir.name}", embedder
+    )
+    coverage = dict(store.embedding_coverage())
+    coverage.update(candidate_report(store, vector_store.filters))
+    return PostgresSession(
+        brain=brain,
+        retrieval_config=retrieval_config,
+        vector_store=vector_store,
+        store=store,
+        coverage=coverage,
+    )
+
+
+def answer_with_plan(
+    session: "PostgresSession",
+    question: str,
+    *,
+    llm: Any = None,
+    today: Any = None,
+) -> dict[str, Any]:
+    """Answer one question through the planner: plan, retrieve, then generate as usual.
+
+    The planner decides *what evidence exists*; the existing generation path decides what to say
+    about it. Planned evidence reaches it through the store's retriever override, so the prompt, the
+    workflow and the groundedness checks are the ones the product already ships — a planned answer
+    and an unplanned one differ in their evidence, never in how the answer is produced or judged.
+
+    ``llm`` is optional and off by default: the rule planner is deterministic, offline and testable,
+    and a model is only ever asked to refine it.
+    """
+    import query_plan
+
+    store = session.store
+    plan = query_plan.plan_query(
+        question,
+        names=store.person_vocabulary(),
+        conversations=store.conversation_vocabulary(),
+        today=today,
+    )
+    if llm is not None:
+        plan = query_plan.plan_with_llm(question, llm, base=plan)
+    result = query_plan.execute_plan(
+        question, plan, vector_store=session.vector_store, retrieval_config=session.retrieval_config
+    )
+    session.vector_store.set_override(result.documents)
+    try:
+        answer = answer_question(session.brain, result.retrieval_config, question=question)
+    finally:
+        session.vector_store.clear_override()
+    answer["plan"] = result.describe()
+    answer["plan_notes"] = result.notes
+    return answer
+
+
+def prepare_vector_store(
+    account_dir: Path,
+    *,
+    postgres_url: str | None = None,
+    store_name: str | None = None,
+    embedder: Any = None,
+) -> Any:
+    """A bare :class:`memory_store.PostgresVectorStore` for one account.
+
+    For callers that want to *look* rather than ask — the acceptance, a probe, the planner's
+    candidate counting. It shares the same construction as :func:`build_postgres_session` so the two
+    cannot drift into different notions of what the store contains.
+    """
+    from memory_store import PostgresMemoryStore, PostgresVectorStore, target_for
+
+    target = target_for(Path(account_dir), url=postgres_url, store_name=store_name)
+    store = PostgresMemoryStore.open(target)
+    return PostgresVectorStore(
+        store,
+        embedder or index_cache.build_embedder(),
+        origin=f"account:{Path(account_dir).name}",
+    )
+
+
+# ---------------------------------------------------------------------------------------------
 # The incremental path's two helpers
 # ---------------------------------------------------------------------------------------------
 

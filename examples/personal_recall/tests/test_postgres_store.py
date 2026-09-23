@@ -118,6 +118,18 @@ def pg_url() -> str:
     return url
 
 
+def connect_in(pg_url: str, schema: str) -> psycopg.Connection:
+    """A connection whose search path finds this test's schema first and the extension's second.
+
+    `public` is on the path because the `vector` type lives there: `CREATE EXTENSION` puts an
+    extension in one schema for the whole database, and a schema-only path hides it, so the Phase 22B
+    migration fails with `type "vector" does not exist`. It comes *second*, so every table the store
+    creates resolves to this test's own schema first and nothing else is reachable by an unqualified
+    name — the isolation is the shadowing, not the absence of a fallback.
+    """
+    return psycopg.connect(pg_url, options=f"-c search_path={schema},public")
+
+
 def _create_schema(pg_url: str) -> str:
     name = f"pr_test_{uuid4().hex[:12]}"
     conn = psycopg.connect(pg_url)
@@ -147,7 +159,7 @@ def open_store(pg_url: str, store_name: str = "test") -> Iterator[PostgresMemory
     silently start writing into ``public`` the moment it proved the rollback worked.
     """
     schema = _create_schema(pg_url)
-    connection = psycopg.connect(pg_url, options=f"-c search_path={schema}")
+    connection = connect_in(pg_url, schema)
     store = PostgresMemoryStore(StoreTarget(url=pg_url, store_name=store_name), connection=connection)
     store.migrate()
     try:
@@ -307,7 +319,7 @@ DUMP_TABLES = (
 
 #: Columns a store is *expected* to differ on between two writes of the same content — when it was
 #: written, not what it holds. §29 names these as the only allowed differences.
-OPERATIONAL_COLUMNS = frozenset({"updated_at"})
+OPERATIONAL_COLUMNS = frozenset({"updated_at", "embedding"})
 
 #: ``memory_store_state`` fields that describe the content. ``store_generation``, ``last_sync_at``
 #: and ``updated_at`` are operational and excluded.
@@ -473,22 +485,37 @@ def test_b_the_expected_tables_constraints_and_indexes_exist(store: PostgresMemo
             assert set(columns) <= actual, f"{table}: missing {sorted(set(columns) - actual)}"
             undeclared = actual - set(columns)
             assert undeclared <= OPERATIONAL_COLUMNS, f"{table}: undeclared {sorted(undeclared)}"
+            # `updated_at` is written by the database; `embedding` is written by the vector import
+            # rather than by the snapshot COPY. Both are declared here rather than allowed silently,
+            # so a genuinely forgotten column still fails.
     store._conn.commit()
 
 
-def test_b_there_is_no_vector_column_and_no_vector_extension(store: PostgresMemoryStore) -> None:
-    """§3: this phase does not build any part of Phase 22B in advance."""
+def test_b_the_vector_column_is_the_width_the_model_produces(store: PostgresMemoryStore) -> None:
+    """Phase 22A asserted the column did not exist; Phase 22B adds it, at a width it cannot guess.
+
+    The dimension is written into the migration because SQL cannot compute it, which is only safe if
+    something checks it against the model actually in use. This is that check: a `vector(512)` column
+    refuses every 768- or 1024-wide vector at insert time, so the failure is a rejected write rather
+    than a silently mis-ranked search.
+    """
     with store._conn.cursor() as cur:
-        columns = [
-            str(row[0])
-            for row in cur.execute(
-                "SELECT column_name FROM information_schema.columns "
-                "WHERE table_schema = current_schema()"
-            ).fetchall()
-        ]
-    assert not any("embedding" in name or "vector" in name for name in columns)
-    assert not any("vector" in name for name in columns)
+        installed = cur.execute(
+            "SELECT count(*) FROM pg_extension WHERE extname = 'vector'"
+        ).fetchone()[0]
+        declared = cur.execute(
+            "SELECT format_type(a.atttypid, a.atttypmod) FROM pg_attribute a "
+            "JOIN pg_class c ON c.oid = a.attrelid "
+            "WHERE c.relname = 'memory_chunks' AND a.attname = 'embedding'"
+        ).fetchone()[0]
     store._conn.commit()
+    assert installed == 1, "the extension the migration creates is installed"
+
+    # 512 is bge-small-zh-v1.5's width — the model `index_cache.EMBEDDING_MODEL_PATH` names, and the
+    # one every vector in the persistent index was produced with. The real enforcement is at write
+    # time: pgvector rejects a vector of any other width, so a model change fails loudly on the
+    # import rather than quietly ranking a corpus whose vectors cannot be compared.
+    assert str(declared) == "vector(512)", declared
 
 
 def test_c_migrating_leaves_no_open_transaction(pg_url: str) -> None:
@@ -499,7 +526,7 @@ def test_c_migrating_leaves_no_open_transaction(pg_url: str) -> None:
     created. Nothing in a one-connection test can notice that; a second session can.
     """
     schema = _create_schema(pg_url)
-    connection = psycopg.connect(pg_url, options=f"-c search_path={schema}")
+    connection = connect_in(pg_url, schema)
     try:
         store = PostgresMemoryStore(
             StoreTarget(url=pg_url, store_name="tx"), connection=connection
@@ -542,11 +569,16 @@ def test_c_an_empty_database_reports_version_zero_and_the_pending_migration(pg_u
     """Before any migration the version is 0 and exactly one migration is pending."""
     schema = _create_schema(pg_url)
     try:
-        conn = psycopg.connect(pg_url, options=f"-c search_path={schema}")
+        conn = connect_in(pg_url, schema)
         try:
             assert schema_module.current_version(conn) == 0
             pending = schema_module.pending_migrations(conn)
-            assert [m.version for m in pending] == [1]
+            # Every migration the repository holds, in order — not a hardcoded count, which would
+            # have to be edited by every future phase for no assertion anyone reads.
+            assert [m.version for m in pending] == [
+                m.version for m in schema_module.discover_migrations()
+            ]
+            assert pending[0].version == 1
         finally:
             conn.close()
     finally:
@@ -592,7 +624,7 @@ def test_d_deleting_a_conversation_cascades_to_every_derived_row(store: Postgres
 def test_e_a_schema_mismatch_fails_loudly(pg_url: str) -> None:
     """A database from a different schema version is refused rather than queried."""
     schema = _create_schema(pg_url)
-    connection = psycopg.connect(pg_url, options=f"-c search_path={schema}")
+    connection = connect_in(pg_url, schema)
     store = PostgresMemoryStore(StoreTarget(url=pg_url, store_name="test"), connection=connection)
     try:
         store.migrate()
@@ -616,9 +648,16 @@ def test_e_a_migration_that_cannot_apply_leaves_the_version_unmoved(store: Postg
     """A broken migration is its own transaction: the database stays at the last version that ran."""
     broken = scratch / "migrations"
     broken.mkdir()
-    source = schema_module.MIGRATIONS_DIR / "001_initial_memory_store.sql"
-    (broken / "001_initial_memory_store.sql").write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
-    (broken / "002_deliberately_broken.sql").write_text(
+    # Every real migration, plus one that cannot apply. Copied rather than invented, so the test
+    # breaks the way a new phase would: the runner sees the repository's history and then a bad
+    # entry after it. The broken one takes the *next* free version — numbering it 002 would make it
+    # "already applied" by version number and nothing would run at all.
+    for migration in schema_module.discover_migrations():
+        (broken / migration.path.name).write_text(
+            migration.path.read_text(encoding="utf-8"), encoding="utf-8"
+        )
+    next_version = max(m.version for m in schema_module.discover_migrations()) + 1
+    (broken / f"{next_version:03d}_deliberately_broken.sql").write_text(
         "CREATE TABLE impossible (a integer, a text);", encoding="utf-8"
     )
     before = schema_module.current_version(store._conn)
@@ -1209,7 +1248,7 @@ class CrashStore(PostgresMemoryStore):
 @contextmanager
 def crashing_store(pg_url: str, store_name: str) -> Iterator[CrashStore]:
     schema = _create_schema(pg_url)
-    connection = psycopg.connect(pg_url, options=f"-c search_path={schema}")
+    connection = connect_in(pg_url, schema)
     store = CrashStore(StoreTarget(url=pg_url, store_name=store_name), connection=connection)
     store.migrate()
     try:
@@ -1326,7 +1365,7 @@ def test_chat_times_round_trip_exactly_under_any_session_timezone(
     assert expected.tzinfo is None, "the contract's timestamps are naive"
 
     schema = _create_schema(pg_url)
-    connection = psycopg.connect(pg_url, options=f"-c search_path={schema}")
+    connection = connect_in(pg_url, schema)
     try:
         store = PostgresMemoryStore(StoreTarget(url=pg_url, store_name="clock"), connection=connection)
         store.migrate()

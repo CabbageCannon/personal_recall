@@ -14,7 +14,10 @@
 # The real connection string lives in `.env`, is git-ignored, and is the only thing the code reads.
 services:
   postgres:
-    image: postgres:16
+    # The pgvector distribution of PostgreSQL 16, not the stock image: `CREATE EXTENSION vector` is
+    # what Phase 22B's migration does, and the stock image does not ship the extension. Same major
+    # version, so the data directory is unchanged and the switch is a container recreate.
+    image: pgvector/pgvector:pg16
     container_name: personal_recall_pg
     restart: unless-stopped
     environment:

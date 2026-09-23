@@ -29,6 +29,14 @@ from .bootstrap import (
     read_labels,
     state_fields,
 )
+from .filters import RetrievalFilter, combine
+from .vectors import (
+    IndexVector,
+    VectorImportError,
+    VectorImportReport,
+    import_vectors,
+    read_index_vectors,
+)
 from .config import (
     DATABASE_URL_VAR,
     STORE_NAME_VAR,
@@ -56,6 +64,13 @@ from .schema import (
     discover_migrations,
     require_current,
 )
+from .retrieval import (
+    DEFAULT_EF_SEARCH,
+    PgVectorRetriever,
+    PostgresVectorStore,
+    candidate_report,
+    describe_filters,
+)
 from .store import (
     PostgresMemoryStore,
     StoreCounts,
@@ -68,8 +83,12 @@ from .store import (
 __all__ = [
     "DATABASE_URL_VAR",
     "Migration",
+    "PgVectorRetriever",
     "PostgresMemoryStore",
+    "PostgresVectorStore",
     "ProjectionError",
+    "IndexVector",
+    "RetrievalFilter",
     "SCHEMA_VERSION",
     "STORE_NAME_VAR",
     "SchemaError",
@@ -83,17 +102,25 @@ __all__ = [
     "StoreSnapshot",
     "StoreTarget",
     "TABLE_COLUMNS",
+    "VectorImportError",
+    "VectorImportReport",
     "WriteReport",
     "account_snapshot",
     "apply_migrations",
     "build_snapshot",
+    "DEFAULT_EF_SEARCH",
+    "candidate_report",
     "connect",
+    "combine",
     "content_hash",
     "conversation_snapshot",
     "current_version",
     "database_url",
+    "describe_filters",
     "discover_migrations",
+    "import_vectors",
     "person_id_for",
+    "read_index_vectors",
     "read_labels",
     "require_current",
     "state_fields",

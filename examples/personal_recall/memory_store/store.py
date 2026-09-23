@@ -73,6 +73,24 @@ _DATA_TABLES = (
 )
 
 
+#: HNSW's search breadth, set per query rather than left at pgvector's default of 40.
+#:
+#: Measured on this account against the exact answer, agreement of the returned top-30 with the
+#: true top-30 — the number that matters, because these 30 candidates are what the fusion sees:
+#:
+#:     ef_search   40    100    200    500    1000   exact
+#:     overlap   123/180 146/180 162/180 175/180 177/180 180/180
+#:     ms/query      110     75      88     234     217    1157
+#:
+#: pgvector's default of 40 agrees with the truth 68% of the time. 500 is the elbow: 97%, and the
+#: 146 ms it costs over 200 is nothing next to the ~22 s a whole-account BM25 query takes. Chosen for
+#: quality because the budget is spent somewhere else entirely.
+#:
+#: A *filtered* query does not use this: the candidate set is small enough that the planner scans it
+#: exactly, which is why the metadata filter is also the exact path.
+DEFAULT_EF_SEARCH = 500
+
+
 class StoreError(RuntimeError):
     """The store could not be used as asked."""
 
@@ -171,6 +189,8 @@ class PostgresMemoryStore:
         self.target = target
         self._conn = connection if connection is not None else connect(target)
         self._owns_connection = connection is None
+        self.ef_search = DEFAULT_EF_SEARCH
+        _register_pgvector(self._conn)
 
     # -- lifecycle ------------------------------------------------------------------------------
 
@@ -621,6 +641,197 @@ class PostgresMemoryStore:
             "last_event_at": row[5],
         }
 
+    # -- embeddings (Phase 22B) -----------------------------------------------------------------
+
+    def chunk_text_hashes(self) -> dict[str, str]:
+        """``chunk_id -> sha256 of the chunk text``, for every chunk the store holds.
+
+        The alignment oracle for a vector import: a vector belongs to a chunk when the digest of the
+        text it was embedded *for* equals the digest of the text the store holds. Both sides are the
+        same function (``rows.content_hash`` / ``incremental_index.text_digest``), so this is an
+        equality of two independently computed values rather than a trust in chunk ids alone.
+        """
+        with self._conn.cursor() as cur:
+            rows = cur.execute("SELECT chunk_id, text_hash FROM memory_chunks").fetchall()
+        self._conn.commit()
+        return {str(chunk_id): str(text_hash) for chunk_id, text_hash in rows}
+
+    def chunk_texts(self, chunk_ids: Sequence[str]) -> dict[str, str]:
+        """``chunk_id -> text`` for the named chunks. Used only to embed what has no vector yet."""
+        if not chunk_ids:
+            return {}
+        with self._conn.cursor() as cur:
+            rows = cur.execute(
+                "SELECT chunk_id, text FROM memory_chunks WHERE chunk_id = ANY(%s)",
+                (list(chunk_ids),),
+            ).fetchall()
+        self._conn.commit()
+        return {str(chunk_id): str(text) for chunk_id, text in rows}
+
+    def embedding_coverage(self) -> dict[str, int]:
+        """How many chunks carry a vector, and the dimension they carry."""
+        with self._conn.cursor() as cur:
+            row = cur.execute(
+                "SELECT count(*), count(embedding), "
+                "       coalesce(max(vector_dims(embedding)), 0) FROM memory_chunks"
+            ).fetchone()
+        self._conn.commit()
+        return {"chunks": int(row[0]), "with_vector": int(row[1]), "dimension": int(row[2])}
+
+    def write_embeddings(
+        self, rows: Sequence[tuple[str, Sequence[float]]], *, dimension: int
+    ) -> int:
+        """Bulk-assign vectors to chunks. Returns how many rows were set.
+
+        Through a temporary table and one ``UPDATE … FROM``: the column already exists and 81,672
+        individual updates would be 81,672 round trips. The temporary table is the only place a
+        vector is ever written from outside a ``COPY``, and it lives for the length of one
+        transaction.
+        """
+        if not rows:
+            return 0
+        from pgvector.psycopg import register_vector
+
+        register_vector(self._conn)
+        with self._conn.transaction():
+            with self._conn.cursor() as cur:
+                cur.execute(
+                    f"CREATE TEMP TABLE _vector_import (chunk_id TEXT PRIMARY KEY, "
+                    f"embedding vector({int(dimension)})) ON COMMIT DROP"
+                )
+                with cur.copy("COPY _vector_import (chunk_id, embedding) FROM STDIN") as copy:
+                    for chunk_id, vector in rows:
+                        copy.write_row((chunk_id, _as_vector(vector)))
+                cur.execute(
+                    "UPDATE memory_chunks c SET embedding = v.embedding "
+                    "FROM _vector_import v WHERE c.chunk_id = v.chunk_id"
+                )
+                written = cur.rowcount or 0
+        return int(written)
+
+    # -- retrieval candidates (Phase 22B) -------------------------------------------------------
+
+    def person_vocabulary(self) -> tuple[tuple[str, str], ...]:
+        """``(display_name, person_id)`` for every person the store can name.
+
+        The planner's grounding: a name in a question is only ever recognised because the account
+        actually holds it, so an extraction cannot invent a person. A name carried by more than one
+        person appears more than once, deliberately — the caller decides what to do about the
+        ambiguity, and silently picking one would drop the other's evidence.
+        """
+        with self._conn.cursor() as cur:
+            rows = cur.execute(
+                "SELECT display_name, person_id FROM people "
+                "WHERE display_name IS NOT NULL AND display_name <> '' ORDER BY display_name"
+            ).fetchall()
+        self._conn.commit()
+        return tuple((str(name), str(pid)) for name, pid in rows)
+
+    def conversation_vocabulary(self) -> tuple[tuple[str, str], ...]:
+        """``(label, conversation_id)`` for every conversation with a name worth matching on.
+
+        Only labels the project judged usable — `display_label` is NULL for a talker that was merely
+        spelled back at us, and matching a wxid inside a question would be matching noise.
+        """
+        with self._conn.cursor() as cur:
+            rows = cur.execute(
+                "SELECT display_label, conversation_id FROM conversations "
+                "WHERE display_label IS NOT NULL ORDER BY display_label"
+            ).fetchall()
+        self._conn.commit()
+        return tuple((str(label), str(cid)) for label, cid in rows)
+
+    def count_chunks(self, filters: Any = None) -> int:
+        """How many chunks a filter selects. The candidate-set number a fast acceptance reports."""
+        from .filters import RetrievalFilter
+
+        active = filters or RetrievalFilter()
+        where, params = active.clause()
+        sql = "SELECT count(*) FROM memory_chunks c"
+        if where:
+            sql += f" WHERE {where}"
+        with self._conn.cursor() as cur:
+            value = int(cur.execute(sql, tuple(params)).fetchone()[0])
+        self._conn.commit()
+        return value
+
+    def select_chunks(
+        self, filters: Any = None, *, limit: int | None = None
+    ) -> tuple[tuple[Any, ...], ...]:
+        """The candidate chunks a filter selects, in the canonical account order."""
+        from .filters import RetrievalFilter
+
+        active = filters or RetrievalFilter()
+        where, params = active.clause()
+        sql = f"SELECT {', '.join(_CHUNK_DOCUMENT_COLUMNS)} FROM memory_chunks c"
+        if where:
+            sql += f" WHERE {where}"
+        sql += " ORDER BY c.conversation_id, c.chunk_index"
+        if limit is not None:
+            sql += " LIMIT %s"
+            params = list(params) + [int(limit)]
+        with self._conn.cursor() as cur:
+            rows = cur.execute(sql, tuple(params)).fetchall()
+        self._conn.commit()
+        return tuple(tuple(row) for row in rows)
+
+    def account_chunk_order(self) -> dict[str, int]:
+        """``chunk_id -> its 1-based position in the whole account``.
+
+        The number the retrieval index stamped on every document, recomputed from the store rather
+        than stored: it is a property of the account's *whole* chunk sequence, so a stored copy would
+        have to be rewritten for every chunk after an insertion, on every sync. One sort of the chunk
+        table, computed once per session and cached by the caller.
+        """
+        with self._conn.cursor() as cur:
+            rows = cur.execute(
+                "SELECT chunk_id FROM memory_chunks ORDER BY conversation_id, chunk_index"
+            ).fetchall()
+        self._conn.commit()
+        return {str(row[0]): position for position, row in enumerate(rows, start=1)}
+
+    def dense_chunks(
+        self,
+        embedding: Sequence[float],
+        *,
+        filters: Any = None,
+        limit: int = 30,
+    ) -> tuple[tuple[Any, ...], ...]:
+        """Nearest chunks by cosine distance, restricted to the filter. Returns rows plus distance.
+
+        ``ORDER BY embedding <=> $1`` is what makes this the pgvector path rather than a scan: the
+        HNSW index answers it directly when no filter narrows the set, and the planner falls back to
+        an exact search over the candidate rows when one does — which is the right trade, because a
+        filtered candidate set is small by construction.
+        """
+        from pgvector.psycopg import register_vector
+
+        from .filters import RetrievalFilter
+
+        register_vector(self._conn)
+        active = filters or RetrievalFilter()
+        where, params = active.clause()
+        sql = (
+            f"SELECT {', '.join(_CHUNK_DOCUMENT_COLUMNS)}, c.embedding <=> %s AS distance "
+            "FROM memory_chunks c WHERE c.embedding IS NOT NULL"
+        )
+        query_vector = _as_vector(embedding)
+        values: list[Any] = [query_vector]
+        if where:
+            sql += f" AND {where}"
+            values.extend(params)
+        sql += " ORDER BY c.embedding <=> %s LIMIT %s"
+        values.extend([query_vector, int(limit)])
+        # `SET LOCAL` so the breadth applies to this query and reverts with the transaction: a session
+        # setting would leak into whatever a caller does next, and this is not a property of the
+        # connection. The value is an int this class owns, so interpolating it is not an injection.
+        with self._conn.transaction():
+            with self._conn.cursor() as cur:
+                cur.execute(f"SET LOCAL hnsw.ef_search = {int(self.ef_search)}")
+                rows = cur.execute(sql, tuple(values)).fetchall()
+        self._conn.commit()
+        return tuple(tuple(row) for row in rows)
+
     # -- acceptance helpers ---------------------------------------------------------------------
 
     def verify_counts(self, expected: Mapping[str, int]) -> dict[str, Any]:
@@ -753,6 +964,50 @@ class PostgresMemoryStore:
         return tuple((int(ordinal), str(event_id)) for ordinal, event_id in rows)
 
 
+def _register_pgvector(conn: psycopg.Connection) -> bool:
+    """Teach this connection pgvector's types, if the extension is installed here.
+
+    Best effort by design: the store works without pgvector — Phase 22A's tables, the structured
+    queries and every non-vector path are unaffected — so a missing package must not stop a
+    connection from opening. What it buys is that a vector column reads back as an array rather than
+    as the text ``[0.1, 0.2, …]``; :func:`_as_vector` handles both, so this is a convenience and not a
+    requirement.
+    """
+    try:
+        from pgvector.psycopg import register_vector
+
+        register_vector(conn)
+    except Exception:  # noqa: BLE001 - absent package, or a database without the extension
+        return False
+    return True
+
+
+def _as_vector(value: Any) -> Any:
+    """A vector in the form pgvector's psycopg adapter recognises.
+
+    The adapter registers a dumper for ``numpy.ndarray`` and **not** for a Python list: an unadapted
+    list falls through to PostgreSQL's array syntax (``{…}``), which the ``vector`` type rejects
+    because it expects ``[…]``. float32 is the width the vectors were produced at.
+
+    Three inputs are accepted, because all three occur: an ndarray (already adapted), a plain
+    sequence (a caller's vector), and a **string** — which is what a vector column reads back as on a
+    connection where the adapter was never registered. Handling the third here rather than relying on
+    registration makes the function total, and makes "read a vector from the store and search with it"
+    work without the caller knowing anything about adapters.
+    """
+    import numpy
+
+    if isinstance(value, numpy.ndarray):
+        return value.astype(numpy.float32, copy=False)
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("[") and text.endswith("]"):
+            return numpy.asarray(text[1:-1].split(","), dtype=numpy.float32)
+    if hasattr(value, "to_list"):  # pgvector's own `Vector` wrapper
+        return numpy.asarray(value.to_list(), dtype=numpy.float32)
+    return numpy.asarray(list(value), dtype=numpy.float32)
+
+
 def _scalar(conn: psycopg.Connection, sql: str, params: Sequence[Any]) -> int:
     with conn.cursor() as cur:
         return int(cur.execute(sql, tuple(params)).fetchone()[0])
@@ -770,6 +1025,20 @@ def _human_bytes(value: int) -> str:
         size /= 1024
     return f"{size:.1f} TiB"
 
+
+#: The columns the retrieval layer projects into Documents, in the order it reads them. The tuple
+#: order is the contract between this module and ``retrieval.py``; a test compares it to the parser.
+#: `chunk_index` and `metadata` come last because the retrieval layer still has to stamp an
+#: account-wide position and a `sessions_total` on top of them.
+_CHUNK_DOCUMENT_COLUMNS = (
+    "c.chunk_id",
+    "c.conversation_id",
+    "c.start_time",
+    "c.end_time",
+    "c.n_events",
+    "c.text",
+    "c.metadata",
+)
 
 #: Recompute every derived `people` column from the memberships. Runs over `conversation_people`
 #: only — a few thousand rows — which is what makes people maintenance cheap enough to be exact.
