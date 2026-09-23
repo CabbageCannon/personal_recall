@@ -4608,3 +4608,272 @@ The frozen six-query probe, run after Phase 22A against the same index generatio
 on (81,656 documents): **6/6 exact parity** — same order, same set, same citation metadata, same
 content digests. Phase 22A changed no retrieval code, and the measurement says so rather than the
 claim.
+
+---
+
+# Phase 22B — pgvector, metadata filtering, and the PostgreSQL retrieval backend
+
+**Scope.** Make the canonical store answer retrieval: a query is narrowed by structured filters
+(person / time / conversation) *before* semantic recall, then ranked by pgvector and BM25 and fused
+with the existing weighted RRF. FAISS stays, as a second backend, so the two can be compared.
+
+## Status
+
+| requirement | state |
+| ----------- | ----- |
+| a new migration enables pgvector, without editing 001 | ✅ `002_chunk_embeddings.sql`, extension + `vector(512)` + HNSW |
+| vectors come from the existing index, not from re-embedding | ✅ **81,672 imported, 0 embedded** |
+| the vectors are the *right* vectors for their chunks | ✅ matched by text digest, not by count; self-retrieval confirms pairing |
+| three filter classes plus combinations | ✅ person / time / conversation, conjunctive |
+| pgvector dense retrieval, filtered and unfiltered | ✅ cosine; indexed above, exact under a filter |
+| filtered BM25 with unchanged scoring | ✅ same `BM25Index`, over the narrowed corpus |
+| weighted RRF reused, not reimplemented | ✅ the same `HybridRRFRetriever`, weights and `c` |
+| both backends selectable | ✅ `faiss` (default) and `postgres` |
+| real acceptance | ✅ below |
+| regression | ✅ below |
+
+## The migration, and what it deliberately is not
+
+`002` is a new file. An applied migration is a historical record — the database that ran it and the
+one that will run 001 then this must end up in the same shape, and rewriting 001 would make "which
+statements produced this database" unanswerable. It adds the extension, one nullable column and one
+index, and moves `memory_store_state.store_schema_version` to 2 so an existing store is not forced
+through a rebuild for a change that added a column and altered no stored fact.
+
+The image moved from `postgres:16` to `pgvector/pgvector:pg16`: the stock image does not ship the
+extension. Same major version, so the data directory was unchanged and the switch was a container
+recreate.
+
+HNSW with `vector_cosine_ops`, while the FAISS index is `IndexFlatL2`. The embedder normalizes, and
+for unit vectors L2² = 2 − 2·cos, so the orderings are identical — **measured, not assumed**: against
+an exact cosine search pgvector agrees with FAISS on **30/30** of the top thirty for a frozen query.
+
+## Reusing the vectors
+
+Eighty-one thousand chunks took most of an hour to embed once. They are already on disk and they are
+the same vectors for the same text, so the import's entire job is to move them and prove it.
+
+The proof is not a count — a count is satisfied by pairing every chunk with somebody else's vector.
+It is the **text digest**: the index records a digest of the exact string it embedded, the store
+records a digest of the exact string it stores, both are sha256 of the chunk text, and a vector moves
+only when they are equal.
+
+| | |
+| --- | --- |
+| vectors in the index | 81,672 |
+| chunks in the store | 81,672 |
+| **matched by text digest** | **81,672** |
+| text mismatches / unknown chunks / missing | 0 / 0 / 0 |
+| **embedded during the import** | **0** |
+| dimension | 512 |
+| wall clock | 406 s (model load + index load + 81k vector reads + one `COPY`) |
+
+Independently confirmed: a chunk searched by its own vector returns itself first for **149/150** of a
+spread sample. The one earlier shortfall was investigated rather than waved away — **21 of 21** misses
+were recovered by an exact search and **0 of 21** had duplicate text, which is HNSW approximation and
+not a mispairing.
+
+## `ef_search`, chosen by measurement
+
+The number that matters is agreement of the returned top-30 with the true top-30, because those thirty
+candidates are what the fusion sees:
+
+| `ef_search` | 40 | 100 | 200 | **500** | 1000 | exact |
+| --- | --- | --- | --- | --- | --- | --- |
+| overlap@30 with truth | 123/180 | 146/180 | 162/180 | **175/180** | 177/180 | 180/180 |
+| ms/query | 110 | 75 | 88 | 234 | 217 | 1157 |
+
+pgvector's default of 40 agrees with the truth 68 % of the time. 500 is the elbow at 97 %, and the
+146 ms it costs is nothing beside the ~22 s a whole-account BM25 query takes. A **filtered** query does
+not use it at all — the candidate set is small enough to scan exactly, which is why the metadata
+filter is also the exact path.
+
+## Metadata filtering
+
+| filter | candidates | time | check |
+| --- | --- | --- | --- |
+| one conversation | **22,188** of 81,672 | 6 ms | exactly the conversation's chunks; 500/500 sampled present |
+| one person (speaker) | **10,857** | 182 ms | exactly the chunks that person spoke in |
+| conversation + person | 0 | — | correct: that person does not speak in that conversation |
+| a person who does not exist | 0 | — | an empty result, not an error |
+| a half-history time window | 72,358 | — | overlap semantics, both directions |
+
+The person filter is a **semi-join against the evidence**, not against membership: it means "a chunk
+this person spoke in", not "a chunk from a chat they are in". That is what stops "what did X say about
+the deadline" returning a chunk where X was present while somebody else answered.
+
+Candidate reduction, real conversations: **72.83 %**, **91.90 %**, **92.98 %** — and on real
+questions, where a person is named, **99.3–99.7 %** (below).
+
+## The two backends
+
+The frozen six queries, FAISS versus pgvector, identical fusion on both sides:
+
+| | faiss | pgvector | top-k overlap |
+| --- | --- | --- | --- |
+| q07 | 46.3 s | 50.6 s | 18/20 |
+| q09 | 33.8 s | 30.6 s | 19/20 |
+| q01 | 42.6 s | 44.6 s | 20/20 |
+| q04 | 73.0 s | 65.6 s | 20/20 |
+| q10 | 91.2 s | 87.4 s | 20/20 |
+| q17 | 35.6 s | 35.1 s | 20/20 |
+| **total** | **322.5 s** | **313.9 s** | **117/120 (97.5 %)** |
+
+Exact parity is not claimed and was not expected: the BM25 statistics are the same but the dense
+ranking is approximate on one side and exact on the other. The residual disagreement is HNSW, and
+raising `ef_search` shrinks it — the measurement above is at 500, where it is 97.5 %.
+
+The latency in both columns is dominated by the **BM25 index build and query** (~22–30 s for 81,672
+documents of Chinese text in pure Python). The dense side is ~40 ms on both, which is the comparison
+that actually matters: `faiss 39 ms / pgvector 34 ms` on the same question.
+
+Where the two backends were verified to be **the same corpus**, not merely the same size: the store's
+81672 chunk ids are the same set **and the same order** as the index's 81672 documents. That is what
+makes the BM25 side identical and the comparison meaningful.
+
+### What the filter buys
+
+One real question, unnarrowed and narrowed to one conversation, identical retrieval code:
+
+| | unnarrowed | narrowed |
+| --- | --- | --- |
+| candidates | 81,672 | **22,188** |
+| wall clock | 45,815 ms | **24,473 ms** |
+| 19 of the 20 unfiltered top-k came from outside the scope | — | — |
+| everything returned is in scope | — | ✅ |
+
+And on the BM25 side specifically — the expensive half — building the index over one conversation
+takes **13.0 s instead of 30.0 s** and querying it **7.5 s instead of 22.9 s**.
+
+## Product integration
+
+`recall.build_postgres_session()` and `PostgresVectorStore`. The store is duck-typed to the two
+methods the product's retrieval path already calls (`as_retriever`, `get`), so `iter_documents`,
+`BM25Retriever` and `HybridRRFRetriever` are used **unchanged** — there is no second fusion and no
+second BM25 in this phase, which is what makes the two backends comparable at all.
+
+FAISS remains the default. Nothing on the retrieval path opens a PostgreSQL connection unless a
+caller asks for the postgres backend, and the whole ordinary suite still passes with no server
+running.
+
+---
+
+# Phase 23 — Memory Query Planner and multi-strategy retrieval
+
+**Scope.** A question becomes an explicit plan — which people, which period, which conversations,
+which retrieval *shape* — and the plan is executed against the Phase 22B backend. The planner never
+answers anything.
+
+## Status
+
+| requirement | state |
+| ----------- | ----- |
+| a testable plan schema | ✅ pydantic `MemoryQueryPlan` |
+| intents: fact / attribution / temporal / exhaustive | ✅ plus `absence_claim` |
+| rules + optional model refinement | ✅ rules always produce a plan; the model only refines |
+| failure falls back to `single_fact` | ✅ and to the *rule* plan, which is always present |
+| strategies executed, not just named | ✅ four, each with its own pool and ordering |
+| wired behind the existing answer path | ✅ `answer_with_plan`; no UI change |
+| real acceptance | ✅ below |
+
+## The plan
+
+`intent` (5 values) · `people` and `person_ids` · `time_range` · `conversation_scope` · `strategy`
+(4 values) · `requires_exhaustive_recall` · `source` · `notes`.
+
+Two limits are deliberate. The taxonomy is four intents plus one, not a tree — every extra category is
+one the tests do not cover. And **extraction is grounded in the account, not in the language**: a
+person is recognised because an actual `people.display_name` appears in the question, never because a
+word looked like a name. A hallucinated filter is the one failure this layer can cause that nothing
+downstream detects — it silently excludes the answer and the generated text still reads fluently.
+
+A name carried by two people resolves to **both** ids and the filter is a union, so the search widens
+rather than narrowing onto the wrong person, and the plan says so in a note.
+
+## Strategy routing
+
+| intent | strategy | pool → kept |
+| --- | --- | --- |
+| single_fact | `hybrid`, or `person_hybrid` when a person was resolved | 30 → 20 |
+| speaker_attribution | `hybrid` when nobody is named, `person_hybrid` when somebody is | 30 → 20 |
+| temporal_state | `timeline` — widest first, then **newest first** | 80 → 20 |
+| multi_event_exhaustive | `exhaustive` — deduped, chronological, grouped | **400 → 60** |
+
+The exhaustive strategy exists because a fixed top-20 is a *sample*, and "一共几次" is a question
+about a *total*: answering it from twenty chunks is not a worse answer, it is an answer to a different
+question. Only the pool and the cut move; the weights, the BM25 parameters and the RRF constant are
+the evaluated ones and are not the planner's business.
+
+## Real acceptance
+
+The planner was run over the **18 hand-written acceptance questions**, whose categories it never saw,
+and then executed against the real store.
+
+**Intent agreement: 11/12** of the scorable categories.
+
+Two categories are deliberately unscored, and the reason is the finding:
+
+* **`abstention` is not a question-side property.** Measured: none of its three questions contains an
+  absence cue, because there is nothing to see — they ask for a specific fact the record happens not
+  to hold. `absence_claim` in this taxonomy means the narrower thing a question can actually *state*
+  ("有没有提过…"). A planner cannot classify a question by a property only its answer has, and scoring
+  it would measure the labeller rather than the planner.
+* **`multi_source_synthesis`** asks for a synthesis across sources, which is a generation shape rather
+  than a retrieval one, so there is no intent for it to be right about.
+
+Where the scored categories disagreed, both readings were defensible and the disagreement is reported
+rather than resolved by weakening a rule until the number improves.
+
+**Executed plans on real questions** — the candidate counts are the phase's headline:
+
+| | candidates | kept | wall | every document in scope |
+| --- | --- | --- | --- | --- |
+| temporal_state | **245** of 81,672 | 20 | 5.8 s | 20/20 hold the named person |
+| single_fact (person) | **229** | 20 | 3.8 s | 20/20 |
+| multi_event_exhaustive | **572** | 60 | 6.2 s | 60/60 |
+| speaker_attribution | **424** | 20 | 6.5 s | 20/20 |
+
+**99.3–99.7 % of the candidate space removed**, and the scope check is exact: not one returned
+document falls outside the plan's filter, and the narrowed searches still return evidence rather than
+nothing.
+
+## Tests
+
+| | |
+| --- | --- |
+| filter clause generation, no server | 34 |
+| planner: intents, extraction, strategies, LLM fallback | 28 |
+| pgvector retrieval against a live server | 15 |
+
+The split matters: the planner and the filters are tested as **pure functions of the question plus
+the account's vocabulary**, which is why every case — including the two that must select nothing and
+the one that must never merge two people — runs with no model, no key and no server.
+
+## Tests
+
+| | before 22B/23 | after |
+| --- | --- | --- |
+| whole suite | 821 | **898** |
+| ordinary suite (`pytest -m "not postgres"`) | 747 | **809** |
+| PostgreSQL integration (`pytest -m postgres`) | 74 | **89** |
+
+New in these two phases: 34 filter-clause tests, 28 planner tests, 15 pgvector retrieval tests
+against a live server.
+
+The split is the point, and it is stricter than it looks. The filter clauses and the planner are
+tested as **pure functions of the question plus the account's vocabulary** — no server, no model, no
+key — which is why every case that matters, including the two that must select nothing and the one
+that must never merge two people who share a name, runs on a machine with no PostgreSQL at all. What
+needs a server is the part that is genuinely SQL: that the predicate selects the rows it claims to, and
+that pgvector's ordering agrees with the vectors that were written.
+
+Two assertions in the Phase 22A suite had to change rather than be deleted, and both were correct to
+change:
+
+* `test_b_there_is_no_vector_column_and_no_vector_extension` asserted the column did **not** exist —
+  a real requirement for Phase 22A and the opposite of Phase 22B's. It is now a check that the column
+  exists at the width the embedding model produces.
+* Everything that opened a connection to a test schema with `search_path=<schema>` had to add
+  `public`, because `CREATE EXTENSION` puts an extension in one schema for the whole database. The
+  test schema still shadows every table, so the isolation is unchanged — but the failure was worth
+  reading: 27 tests broke at once, and none of them was about the thing that had changed.

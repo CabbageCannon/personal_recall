@@ -277,31 +277,30 @@ The default real-data path is account-wide: it calls the same `build_account_ses
 `answer_question()` used by the product. `--corpus` remains available for the older single-conversation
 or merged-shard acceptance runs.
 
-## 6. The structured memory store (PostgreSQL)
+## 6. The structured memory store (PostgreSQL + pgvector)
 
 The retrieval index answers *"what resembles this question"*. This answers *"what did this person say,
 in this conversation, between these two dates, in this order"* — the same memory, normalized once and
-written into tables you can join.
-
-It is **optional and off the retrieval path**. `recall.py` and `web.py` never open a database; a
-machine with no PostgreSQL answers questions exactly as before. Nothing here is required to ask a
-question, and nothing here changes what retrieval does.
+written into tables you can join, filter and search by vector.
 
 ```bash
 docker compose -f docker-compose.postgres.yml up -d     # a local, loopback-only PostgreSQL
 cp .env.example ../../.env                              # then fill in PERSONAL_RECALL_DATABASE_URL
 
 python store_admin.py --account data/real/account_full_v3 --bootstrap-postgres
+python store_admin.py --account data/real/account_full_v3 --import-vectors
 python store_admin.py --account data/real/account_full_v3 --status
 python store_admin.py --account data/real/account_full_v3 --sync-postgres
 ```
 
 `--bootstrap-postgres` writes the whole account (~19 min for 1.6M messages, most of it the export
-parse). `--sync-postgres` advances it over only the conversations that moved, in one transaction, and
-refuses rather than half-applies anything it cannot prove safe — a deleted export, a changed chunking
-setting, a struct-of-rules mismatch all end in `--rebuild-postgres`, not in a guess. `--status`
-prints counts, coverage and identity aggregates; `--smoke` runs the five structured queries and
-reports counts and milliseconds.
+parse). `--import-vectors` copies the chunk vectors the persistent index **already holds** into
+`memory_chunks.embedding`, matched by text digest — it embeds nothing unless a chunk genuinely has no
+vector anywhere, so the 81k embeddings are never recomputed. `--sync-postgres` advances the store over
+only the conversations that moved, in one transaction, and refuses rather than half-applies anything
+it cannot prove safe — a deleted export, a changed chunking setting, a rules mismatch all end in
+`--rebuild-postgres`, not in a guess. `--status` prints counts, coverage and identity aggregates;
+`--smoke` runs the five structured queries and reports counts and milliseconds.
 
 Two tables are worth knowing about if you write your own queries: `memory_events` (one row per
 message, with `speaker_id` / `speaker_display` / `sender_name` deliberately kept as three separate
@@ -313,7 +312,46 @@ The database holds real chat text and real identities. It is a **local private s
 cache: keep it off any shared machine, and never commit its connection string — `.env` is git-ignored
 and `.env.example` holds placeholders only.
 
-## 7. Reproduce the measurements
+### Metadata-filtered hybrid retrieval
+
+`memory_store.retrieval` turns the store into a retrieval backend: a `RetrievalFilter` narrows by
+**person, time and conversation** *before* anything is ranked, then pgvector and BM25 rank what is
+left, and the same weighted RRF the FAISS path uses fuses them. The filter is a real narrowing, not a
+post-filter — on a real question that names somebody it takes 81,672 candidate chunks down to a few
+hundred, which is also where the latency goes: BM25 over one conversation takes 7.5 s instead of 22.9 s.
+
+FAISS remains the default and nothing on the retrieval path opens a database unless asked.
+Programmatically:
+
+```python
+session = recall.build_postgres_session(account_dir, filters=RetrievalFilter(person_ids=[...]))
+```
+
+## 7. The memory query planner
+
+Not every question is a similarity search. *"谁说的"* needs a person filter, *"后来改成什么了"* needs
+the **latest** evidence rather than the most similar, and *"一共几次"* needs a set wide enough to count
+over — a top-20 is a sample, and answering a total from a sample answers a different question.
+
+`query_plan.py` turns a question into an explicit, testable plan — intent, people, time range,
+conversation scope, strategy — and then executes it:
+
+| intent | strategy |
+| --- | --- |
+| a single fact | hybrid (or a hybrid narrowed to a named person) |
+| who did something | hybrid, or person-filtered when the question names somebody |
+| "后来 / 最后 / 现在" | wide retrieval, then **newest first** |
+| "一共几次 / 都有哪些 / 分别" | wide retrieval, deduped by evidence, grouped by conversation |
+
+The planner never answers anything. Planning is a pure function of the question plus the account's own
+names, so it runs with no model and no key; a model can *refine* a plan but never supplies the person
+identities, and every failure falls back to the rule plan.
+
+```python
+answer = recall.answer_with_plan(session, question)   # plan -> evidence -> the usual generation
+```
+
+## 8. Reproduce the measurements
 Everything in `PROJECT_STATUS.md` is regenerable. Retrieval is deterministic under `--workflow
 no-rewrite`, which is what makes these comparisons exact rather than statistical.
 
@@ -359,9 +397,10 @@ Known limits, all recorded with numbers in `PROJECT_STATUS.md`:
 | `web.py`, `webapp/` | the local web UI: the same answer, in a browser |
 | `export_account.py` | WeChat account → the export tree both front ends read |
 | `sync_conversation_labels.py` | exporter's contact names → the evidence-card headers |
-| `store_admin.py` | manage the PostgreSQL canonical memory store (bootstrap / sync / status) |
-| `memory_store/` | that store: schema + migrations, the event→row projection, and its only SQL |
-| `docker-compose.postgres.yml` | a local, loopback-only PostgreSQL for development and tests |
+| `store_admin.py` | manage the canonical memory store (bootstrap / vectors / sync / status) |
+| `memory_store/` | that store: schema + migrations, the event→row projection, its only SQL, and the pgvector retrieval backend |
+| `query_plan.py` | the query planner: intent, filters and retrieval strategy |
+| `docker-compose.postgres.yml` | a local, loopback-only PostgreSQL + pgvector for development and tests |
 | `audit_account.py` | export tree → completeness and boundary report, no model needed |
 | `chat_import.py` | real export → canonical corpus |
 | `groundedness.py` | gold-free caveats shown by the product |
