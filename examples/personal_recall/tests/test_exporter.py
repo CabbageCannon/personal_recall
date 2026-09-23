@@ -741,9 +741,24 @@ def test_module_deletes_only_through_the_scratch_cleanup() -> None:
 
 
 def test_export_result_carries_no_content_field() -> None:
-    """The boundary's output is paths and counts. There is no field for a message body."""
+    """The boundary's output is paths, counts and the CLI's own codes. Never a message body.
+
+    Phase 21B added ``code`` and ``empty_window``: an incremental sync has to tell "this window holds
+    nothing" from "the database could not be read", and doing that by parsing prose would be a
+    guess. Both are the CLI's machine-readable identifiers, and the set stays exact so a third
+    field — a body, an id, a path into the account — cannot ride along unnoticed.
+    """
     fields = set(ExportResult.__dataclass_fields__)
-    assert fields == {"shard", "conversation_id", "path", "messages", "ok", "error"}
+    assert fields == {
+        "shard",
+        "conversation_id",
+        "path",
+        "messages",
+        "ok",
+        "error",
+        "code",
+        "empty_window",
+    }
 
 
 def test_export_environment_repoints_both_home_variables() -> None:
@@ -833,11 +848,26 @@ def test_api_signatures_are_the_ones_callers_expect() -> None:
     assert listing.parameters["scratch_root"].default is None
 
     one = inspect.signature(exporter.export_conversation)
-    assert list(one.parameters) == ["talker", "out_dir", "shard", "multi_dir", "runner", "scratch_root"]
+    assert list(one.parameters) == [
+        "talker",
+        "out_dir",
+        "shard",
+        "multi_dir",
+        "runner",
+        "scratch_root",
+        "since",
+        "until",
+    ]
     assert one.parameters["talker"].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
     assert one.parameters["out_dir"].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
     assert one.parameters["shard"].kind is inspect.Parameter.KEYWORD_ONLY
     assert one.parameters["shard"].default is inspect.Parameter.empty, "shard is required, never guessed"
+    # The window bounds are optional and default to "no window": an existing caller exports the whole
+    # conversation, and there is still exactly one way to invoke the CLI.
+    assert one.parameters["since"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert one.parameters["since"].default is None
+    assert one.parameters["until"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert one.parameters["until"].default is None
 
     shard = inspect.signature(exporter.export_shard)
     assert list(shard.parameters) == [
@@ -867,7 +897,18 @@ def test_api_signatures_are_the_ones_callers_expect() -> None:
     assert account.parameters["only"].kind is inspect.Parameter.KEYWORD_ONLY
 
     fields = exporter.ExportResult.__dataclass_fields__
-    assert list(fields) == ["shard", "conversation_id", "path", "messages", "ok", "error"]
+    assert list(fields) == [
+        "shard",
+        "conversation_id",
+        "path",
+        "messages",
+        "ok",
+        "error",
+        "code",
+        "empty_window",
+    ]
     assert fields["messages"].default == 0
     assert fields["ok"].default is True
     assert fields["error"].default == ""
+    assert fields["code"].default == ""
+    assert fields["empty_window"].default is False

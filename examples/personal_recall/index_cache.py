@@ -58,6 +58,13 @@ The fingerprint is over the files the import actually *reads* — ``*_messages.j
 the tree. A listing rewritten by ``sync_conversation_labels.py`` sits in the same directory and
 changes no chunk; hashing it would buy an 80-minute rebuild for nothing.
 
+**A changed source is not always a rebuild** (Phase 21B). "The export tree changed" remains an
+``INVALID`` verdict here — this module decides what may be *loaded*, and a stored generation never
+answers for a tree it was not built from. But that one reason is the *only* one an incremental
+advance may act on, which is why it is spelled once (:data:`SOURCE_CHANGED`) and why the entry also
+carries :func:`source_inventory_entries`: the same walk, one level finer, so the caller can see
+*which* conversation moved instead of only *that* something did.
+
 BM25 is deliberately **not** persisted. It is built lazily on the first query from the documents
 enumerated out of the FAISS docstore, so a warm start rebuilds it in memory. That is a rebuild, and
 the timings reported by :class:`IndexStatus` say so; it is never claimed as a load.
@@ -81,6 +88,7 @@ from memory.conversations import (
     ACCOUNT_MANIFEST_FILENAME,
     EXPORT_FILENAME_SUFFIX,
     SESSION_LISTING_FILENAME,
+    conversation_id_from_export_filename,
     shard_stem,
 )
 from memory.processor import DOCUMENT_PROJECTION_VERSION
@@ -200,20 +208,111 @@ def embedding_fingerprint(embedder: Any, *, dimension: int) -> str:
 #: thousand chunks because a file the index never opens was touched.
 CONSUMED_FILENAMES = (SESSION_LISTING_FILENAME, ACCOUNT_MANIFEST_FILENAME)
 
+#: What a consumed file *is*, so a finer-grained reader can attribute a change to a conversation
+#: without re-deriving the naming rules. ``export`` is one conversation's messages, ``listing`` a
+#: shard's ``sessions.json``, ``manifest`` the account's ``shard_manifest.json``.
+KIND_EXPORT = "export"
+KIND_LISTING = "listing"
+KIND_MANIFEST = "manifest"
+
 
 def _is_consumed(name: str) -> bool:
     return name.endswith(EXPORT_FILENAME_SUFFIX) or name in CONSUMED_FILENAMES
+
+
+def _kind_of(name: str) -> str:
+    if name.endswith(EXPORT_FILENAME_SUFFIX):
+        return KIND_EXPORT
+    return KIND_MANIFEST if name == ACCOUNT_MANIFEST_FILENAME else KIND_LISTING
 
 
 def _inside(path: Path, roots: Sequence[Path]) -> bool:
     return any(path == root or root in path.parents for root in roots)
 
 
-def source_inventory(account_dir: Path, *, exclude: Sequence[Path] = ()) -> list[str]:
-    """``relative path \\0 size \\0 mtime_ns`` for every file the import reads, sorted.
+#: The version of the **inventory schema** — the fields one entry carries and what they mean. It is
+#: separate from ``CACHE_FORMAT_VERSION`` because the inventory is read by the incremental path,
+#: which must refuse an inventory it does not understand rather than diff it field by field.
+SOURCE_INVENTORY_VERSION = 1
+
+
+@dataclass(frozen=True)
+class SourceFileEntry:
+    """One file the import reads, with what it is and which conversation it belongs to.
+
+    The aggregate fingerprint above answers "is the source *identical*". This answers the finer
+    question the incremental path needs — "which conversation moved" — and it does so without
+    opening a single export: the file name is the conversation's identity (``memory.conversations``)
+    and the size/mtime pair is the change signal, both of which the walk already has.
+
+    ``shard`` is the export directory the file sits in (``MSG0``), empty when the file is not
+    directly inside one — an export the importer will never read, which a caller must treat as
+    ambiguous ownership rather than guess at.
+    """
+
+    relative_path: str
+    size: int
+    mtime_ns: int
+    kind: str = KIND_EXPORT
+    shard: str = ""
+    conversation_id: str = ""
+
+    def fingerprint_line(self) -> str:
+        """The exact string the aggregate fingerprint is built from. One spelling, one digest."""
+        return f"{self.relative_path}\x00{self.size}\x00{self.mtime_ns}"
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "path": self.relative_path,
+            "size": self.size,
+            "mtime_ns": self.mtime_ns,
+            "kind": self.kind,
+            "shard": self.shard,
+            "conversation_id": self.conversation_id,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Any) -> "SourceFileEntry":
+        """Strictly: an entry that cannot be read exactly is a reason to rebuild, not to guess."""
+        if not isinstance(payload, Mapping):
+            raise ValueError("an inventory entry is not an object")
+        required = ("path", "size", "mtime_ns", "kind", "shard", "conversation_id")
+        if set(payload) != set(required):
+            raise ValueError("an inventory entry has unexpected or missing fields")
+        path = payload.get("path")
+        if not isinstance(path, str) or not path:
+            raise ValueError("an inventory entry has no path")
+        kind = payload.get("kind")
+        if kind not in (KIND_EXPORT, KIND_LISTING, KIND_MANIFEST):
+            raise ValueError("an inventory entry has an unknown kind")
+        numbers = {}
+        for key in ("size", "mtime_ns"):
+            value = payload.get(key)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"an inventory entry has no usable {key}")
+            numbers[key] = value
+        return cls(
+            relative_path=path,
+            size=numbers["size"],
+            mtime_ns=numbers["mtime_ns"],
+            kind=kind,
+            shard=str(payload.get("shard") or ""),
+            conversation_id=str(payload.get("conversation_id") or ""),
+        )
+
+
+def source_inventory_entries(
+    account_dir: Path, *, exclude: Sequence[Path] = ()
+) -> list[SourceFileEntry]:
+    """Every file the import reads, as structured entries, sorted by relative path.
+
+    One walk serves both readers: :func:`source_inventory` renders these entries into the aggregate
+    fingerprint Phase 21A compares, and the incremental path diffs them. Two walks would be two
+    chances to disagree about which files count.
 
     Relative paths keep an entry valid when the tree is moved, and keep absolute machine paths out
-    of the digest. Sorting makes the walk's order — which no filesystem promises — irrelevant.
+    of the digest and out of the private cache. Sorting makes the walk's order — which no filesystem
+    promises — irrelevant.
 
     A file that cannot be stat'd raises rather than being skipped: an inventory with a hole in it
     cannot establish that the source is unchanged, and that question must be answered, not guessed.
@@ -224,7 +323,7 @@ def source_inventory(account_dir: Path, *, exclude: Sequence[Path] = ()) -> list
         raise error
 
     excluded = [Path(path).resolve() for path in exclude]
-    entries: list[str] = []
+    entries: list[SourceFileEntry] = []
     for dirpath, dirnames, filenames in os.walk(root, onerror=_raise):
         here = Path(dirpath)
         if _inside(here.resolve(), excluded):
@@ -237,16 +336,47 @@ def source_inventory(account_dir: Path, *, exclude: Sequence[Path] = ()) -> list
                 continue
             stat = (here / name).stat()
             relative = (here / name).relative_to(root).as_posix()
-            entries.append(f"{relative}\x00{stat.st_size}\x00{stat.st_mtime_ns}")
-    entries.sort()
+            parts = relative.split("/")
+            # ``load_account_directory`` descends exactly one level, so a shard is the first path
+            # segment of a two-segment path. Anything deeper is a file the importer never opens, and
+            # saying so is what lets the classifier refuse it instead of inventing an owner.
+            shard = parts[0] if len(parts) == 2 else ""
+            kind = _kind_of(name)
+            conversation_id = ""
+            if kind == KIND_EXPORT:
+                conversation_id = conversation_id_from_export_filename(name) or ""
+            entries.append(
+                SourceFileEntry(
+                    relative_path=relative,
+                    size=stat.st_size,
+                    mtime_ns=stat.st_mtime_ns,
+                    kind=kind,
+                    shard=shard,
+                    conversation_id=conversation_id,
+                )
+            )
+    entries.sort(key=lambda entry: entry.relative_path)
     return entries
+
+
+def source_inventory(account_dir: Path, *, exclude: Sequence[Path] = ()) -> list[str]:
+    """``relative path \\0 size \\0 mtime_ns`` for every file the import reads, sorted."""
+    return [
+        entry.fingerprint_line()
+        for entry in source_inventory_entries(account_dir, exclude=exclude)
+    ]
+
+
+def inventory_fingerprint(entries: Sequence[SourceFileEntry]) -> str:
+    """The aggregate digest of an already-walked inventory. Never walks the tree itself."""
+    return hashlib.sha256(
+        "\n".join(entry.fingerprint_line() for entry in entries).encode("utf-8")
+    ).hexdigest()
 
 
 def source_fingerprint(account_dir: Path, *, exclude: Sequence[Path] = ()) -> str:
     """A digest over what the import will read. Raises ``OSError`` if the tree cannot be walked."""
-    return hashlib.sha256(
-        "\n".join(source_inventory(account_dir, exclude=exclude)).encode("utf-8")
-    ).hexdigest()
+    return inventory_fingerprint(source_inventory_entries(account_dir, exclude=exclude))
 
 
 # ---------------------------------------------------------------------------------------------
@@ -517,13 +647,22 @@ def cleanup_staging(cache_dir: Path) -> int:
 # Validation
 # ---------------------------------------------------------------------------------------------
 
-#: The four things a startup can say. ``REBUILD`` is a deliberate request (``--rebuild-index``),
+#: The five things a startup can say. ``REBUILD`` is a deliberate request (``--rebuild-index``),
 #: ``INVALID`` an entry that exists but cannot be trusted — the two are separate because the reader
-#: of a log line needs to know which happened.
+#: of a log line needs to know which happened. ``INCREMENTAL`` is the one entry that is neither:
+#: the stored generation was valid and its *source* moved, so it was advanced in place instead of
+#: being thrown away.
 HIT = "HIT"
 MISS = "MISS"
 INVALID = "INVALID"
 REBUILD = "REBUILD"
+INCREMENTAL = "INCREMENTAL"
+
+#: The one ``inspect`` reason a source change can produce — and therefore the only reason the
+#: incremental path may act on. Spelled once and compared by identity of value, because a
+#: classifier that matched on its own copy of this string would keep working after one side of the
+#: pair was reworded, which is exactly when it must not.
+SOURCE_CHANGED = "source export tree changed"
 
 
 @dataclass(frozen=True)
@@ -639,7 +778,11 @@ def inspect(cache_dir: Path, *, expected: ExpectedIndex, rebuild: bool = False) 
     if expected.source_fingerprint is None:
         return Inspection(INVALID, "source export tree unreadable")
     if manifest.source_fingerprint != expected.source_fingerprint:
-        return Inspection(INVALID, "source export tree changed")
+        # The manifest comes along even though this is not a hit: a caller that wants to advance the
+        # generation over the new tree needs the stored counts, the fingerprints and the report, and
+        # re-reading the entry to get what was in hand would be a second reader of the same files.
+        # Still not a hit — `is_hit` is the outcome, not the payload.
+        return Inspection(INVALID, SOURCE_CHANGED, manifest)
     return Inspection(HIT, "", manifest)
 
 
@@ -811,6 +954,12 @@ class IndexStatus:
     cache_written: bool = False
     #: True only when this run embedded the chunks itself. A ``HIT`` is a run that embedded nothing.
     embedded: bool = False
+    #: Incremental runs only: how many of ``chunk_count`` kept the vector they already had, how many
+    #: were embedded because they are new or were re-rendered, and how many conversations had to be
+    #: re-imported at all. Counts, so a log line can carry them.
+    chunks_reused: int = 0
+    chunks_embedded: int = 0
+    conversations_reimported: int = 0
     fingerprint_ms: int = 0
     load_ms: int = 0
     import_ms: int = 0
@@ -838,6 +987,14 @@ class IndexStatus:
             if self.cache_age_seconds is not None:
                 details.append(f"age {human_age(self.cache_age_seconds)}")
             details.append(f"loaded in {_seconds(self.load_ms)}")
+        elif self.outcome == INCREMENTAL:
+            details.append(f"{self.chunk_count} chunks")
+            details.append(f"{self.chunks_reused} reused, {self.chunks_embedded} embedded")
+            details.append(
+                f"{self.conversations_reimported} conversation(s) re-imported"
+            )
+            details.append(f"projection v{self.schema_version}")
+            details.append("cache written" if self.cache_written else "cache NOT written")
         else:
             details.append(f"{self.chunk_count} chunks")
             details.append(f"{self.chunk_count} chunks embedded")
@@ -869,6 +1026,9 @@ class IndexStatus:
             "schema_version": self.schema_version,
             "cache_written": self.cache_written,
             "embedded": self.embedded,
+            "chunks_reused": self.chunks_reused,
+            "chunks_embedded": self.chunks_embedded,
+            "conversations_reimported": self.conversations_reimported,
             "timings_ms": {
                 "fingerprint": self.fingerprint_ms,
                 "load": self.load_ms,

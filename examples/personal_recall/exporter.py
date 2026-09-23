@@ -92,6 +92,7 @@ import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
@@ -143,6 +144,11 @@ DEFAULT_TIMEOUT_SECONDS = 600.0
 
 Runner = Callable[[list[str], dict[str, str]], "subprocess.CompletedProcess[str]"]
 
+#: What ``weflow-cli`` writes when the requested window holds nothing. Matched next to the exit code
+#: rather than on its own: the same command fails with the same code when the database itself could
+#: not be read, and "nothing new" must never be confused with "could not ask".
+NO_MESSAGES_MARKER = "未找到消息"
+
 _HEX_OR_BASE64_RUN = re.compile(r"\b[0-9a-fA-F]{32,}\b|\b[A-Za-z0-9+/]{32,}={0,2}")
 _REDACTED = "[REDACTED]"
 
@@ -176,6 +182,13 @@ class ExportResult:
     messages: int = 0  # from the CLI's --json result, 0 if unknown
     ok: bool = True
     error: str = ""
+    #: The CLI's machine-readable ``code`` when it failed (``EXPORT_FAILED``, ``NOT_INITIALIZED``…).
+    #: Carried so a caller can classify a failure without parsing prose — see :attr:`empty_window`.
+    code: str = ""
+    #: True when the failure is *"this window holds no messages"*. That is not an export failure:
+    #: an incremental sync that finds nothing new must be a no-op, and reporting it as a failure is
+    #: how a working sync starts looking broken. Decided below, from the CLI's own signals.
+    empty_window: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -185,7 +198,27 @@ class ExportResult:
             "messages": self.messages,
             "ok": self.ok,
             "error": self.error,
+            "code": self.code,
+            "empty_window": self.empty_window,
         }
+
+
+def is_empty_window(payload: Any, error: str = "") -> bool:
+    """Did this failed run mean "no messages in that window"?
+
+    Two independent signals, and **both** are required: the CLI's exit code for that outcome
+    (``EXPORT_FAILED`` with the "no messages found" text, or ``NO_MESSAGES``). Requiring the text as
+    well as the code is deliberate — ``EXPORT_FAILED`` also covers a genuine failure to read the
+    database, and treating *that* as "nothing new" would silently skip real history. When in doubt
+    this answers ``False``, and the caller reports a failure.
+    """
+    if not isinstance(payload, Mapping):
+        return False
+    code = str(payload.get("code") or "")
+    text = f"{payload.get('error') or payload.get('message') or ''} {error}"
+    if code == "NO_MESSAGES":
+        return True
+    return code == "EXPORT_FAILED" and NO_MESSAGES_MARKER in text
 
 
 # --- the runner seam --------------------------------------------------------------------------
@@ -544,6 +577,23 @@ def list_contacts(
         _discard_scratch_profile(scratch)
 
 
+def window_argument(value: date | datetime | str | None) -> str:
+    """Render a window bound the way ``weflow-cli`` parses it.
+
+    The CLI accepts ``YYYY-MM-DD`` (a local day, whose end is taken for ``--to``) or any string
+    ``Date.parse`` understands, and converts it to **seconds**. A bare integer is therefore *not* a
+    valid spelling — ``Date.parse("1758000000")`` is ``NaN`` and the CLI rejects the run — so a
+    datetime is rendered as a local ISO-8601 second, which is unambiguous and human-readable in a
+    process listing. Second resolution is deliberate: the underlying column is ``MAX(CreateTime)``
+    in seconds, so a finer bound would promise a precision the data does not have.
+    """
+    if isinstance(value, datetime):
+        return value.isoformat(timespec="seconds")
+    if isinstance(value, date):
+        return value.isoformat()
+    return str(value)
+
+
 def export_conversation(
     talker: str,
     out_dir: Path,
@@ -552,11 +602,20 @@ def export_conversation(
     multi_dir: Path | None = None,
     runner: Runner | None = None,
     scratch_root: Path | None = None,
+    since: date | datetime | str | None = None,
+    until: date | datetime | str | None = None,
 ) -> ExportResult:
     """Export one conversation from one shard. Never raises for an exporter failure.
 
     A failed run is reported as ``ok=False`` with a redacted ``error``: the caller is exporting a
     whole account, and one unreadable conversation must not abort the others.
+
+    ``since``/``until`` narrow the export to a time window (``--from``/``--to``), which is what makes
+    an incremental sync cost a delta instead of a history. Only the lower bound is normally passed:
+    leaving the window open at the top means a message that arrives *during* the export is included
+    rather than silently skipped, and the overlap the caller chooses absorbs the boundary. A window
+    that holds nothing is reported as ``ok=False, empty_window=True`` and must be treated as a no-op
+    — see :func:`is_empty_window`.
     """
     runner = runner or run_subprocess
     directory = Path(out_dir)
@@ -578,6 +637,10 @@ def export_conversation(
             "0",
             "--json",
         ]
+        if since is not None:
+            argv.extend(["--from", window_argument(since)])
+        if until is not None:
+            argv.extend(["--to", window_argument(until)])
         try:
             completed = runner(argv, _export_environment(scratch))
         except Exception as exc:  # noqa: BLE001 - one conversation may not abort the shard
@@ -592,16 +655,22 @@ def export_conversation(
         payload = _stdout_json(completed)
         succeeded = isinstance(payload, Mapping) and payload.get("success") is True
         if not succeeded:
+            code = ""
+            if isinstance(payload, Mapping):
+                code = str(payload.get("code") or payload.get("error") or "")
+            failure = (
+                f"weflow-cli export failed for {talker} in shard {shard} (exit "
+                f"{getattr(completed, 'returncode', '?')}, {'+'.join(adjusted)} repointed): "
+                f"{_describe_failure(completed, payload)}"
+            )
             return ExportResult(
                 shard=shard,
                 conversation_id=str(talker),
                 path=str(expected),
                 ok=False,
-                error=(
-                    f"weflow-cli export failed for {talker} in shard {shard} (exit "
-                    f"{getattr(completed, 'returncode', '?')}, {'+'.join(adjusted)} repointed): "
-                    f"{_describe_failure(completed, payload)}"
-                ),
+                error=failure,
+                code=code,
+                empty_window=is_empty_window(payload, failure),
             )
 
         reported = payload.get("path")

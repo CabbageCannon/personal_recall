@@ -31,7 +31,9 @@ from typing import Any
 from uuid import uuid4
 
 import dotenv
+import incremental_index
 import index_cache
+import sync_wechat
 from quivr_core import Brain
 from quivr_core.files.file import FileExtension
 from quivr_core.llm import LLMEndpoint
@@ -452,6 +454,10 @@ class AccountSession:
     retrieval_config: RetrievalConfig
     report: AccountImportReport
     index: index_cache.IndexStatus
+    #: What the WeChat sync did in this run, when one was asked for. ``None`` for a plain
+    #: ``--account`` run, which never touches the local database. Counts only, never an identity:
+    #: the same rule the index status follows.
+    sync: sync_wechat.SyncOutcome | None = None
 
 
 def build_account_session(
@@ -462,6 +468,10 @@ def build_account_session(
     rebuild_index: bool = False,
     embedder: Any = None,
     session_config: SessionConfig | None = None,
+    incremental_update: bool = False,
+    sync: bool = False,
+    multi_dir: Path | None = None,
+    sync_runner: Any = None,
     k: int = DEFAULT_K,
     hybrid_pool: int = DEFAULT_HYBRID_POOL,
     workflow: str = "no-rewrite",
@@ -477,6 +487,23 @@ def build_account_session(
     ``temperature`` and ``max_output_tokens`` are **not** part of that decision — they select from an
     index, never build one, so changing k from 20 to 15 is still a hit.
 
+    Two opt-in modes sit on top of that decision, both **off by default** so that a plain
+    ``--account`` run stays exactly what it was:
+
+    * ``sync=True`` pulls whatever moved in WeChat into the export tree first, using ``multi_dir``
+      (or ``shard_dir``) as the ``Msg/Multi`` directory. It is the only thing in this module that
+      runs ``weflow-cli``, and it runs before the fingerprint is taken — so a run that syncs
+      naturally produces a moved tree, which is exactly what the mode below advances from.
+    * ``incremental_update=True`` advances a still-valid generation over a moved tree by re-rendering
+      only the conversations that moved, instead of rebuilding the account. It is attempted **only**
+      when the index is invalid for the one reason that means "the same rules, a newer tree"
+      (:data:`index_cache.SOURCE_CHANGED`) and the checkpoint agrees with the stored generation.
+      Anything else — a moved chunking configuration, a missing checkpoint, a shard that has no
+      export — falls through to the full rebuild below, which is the correct answer to all of them.
+
+    ``sync_runner`` is the exporter's injection seam, passed through to the CLI calls so an offline
+    test can drive the whole sync path without a WeChat installation.
+
     Every failure mode degrades to the cold path: an unreadable entry, a fingerprint that cannot be
     established, even a cache directory that cannot be written. The export tree remains the source of
     truth, and this function always returns a working session.
@@ -486,6 +513,25 @@ def build_account_session(
     # Leftover staging from an interrupted build is rubble, not history: remove it before anything
     # reads or writes, so no later run has to reason about it.
     index_cache.cleanup_staging(cache_dir)
+
+    # --- the WeChat sync, if and only if it was asked for ---------------------------------------
+    # It runs *before* the fingerprint and before the embedder is used, because its whole purpose is
+    # to change what the fingerprint will say. A plain account run passes ``sync=False`` and touches
+    # no local database: the offline corpora, the acceptance runner and CI have no WeChat install.
+    sync_outcome: sync_wechat.SyncOutcome | None = None
+    if sync:
+        database_dir = multi_dir or shard_dir
+        if database_dir is None:
+            raise ValueError(
+                "--sync-wechat needs the WeChat Msg/Multi directory: pass --multi-dir (or "
+                "--shard-dir), because a sync that cannot see the databases cannot be attempted"
+            )
+        sync_outcome = sync_wechat.sync_account_source(
+            account_dir,
+            multi_dir=database_dir,
+            cache_dir=cache_dir,
+            runner=sync_runner,
+        )
 
     # The export tree is resolved before the embedder is built, and once for both paths: a directory
     # listing costs milliseconds and the model costs tens of seconds, so a mistyped path must fail on
@@ -526,11 +572,16 @@ def build_account_session(
         rebuild=rebuild_index,
     )
 
-    # --- warm start: load the index and reconstruct what was imported --------------------------
-    if inspection.is_hit:
+    # --- load the stored entry: needed by the warm start, and by an incremental update ----------
+    # One load for both, deliberately. The store is the *only* thing an incremental update reuses
+    # (its documents and their vectors), so a second `load_store` call would read the same files
+    # twice to answer the same question — and, in a function whose whole point is that the cache
+    # decision happens exactly once, it would be a second decision.
+    vector_store = None
+    failure = ""
+    load_ms = 0
+    if inspection.is_hit or inspection.reason == index_cache.SOURCE_CHANGED:
         load_started = perf_counter()
-        vector_store = None
-        failure = ""
         try:
             vector_store = index_cache.load_store(cache_dir, embedder)
         except Exception as exc:  # noqa: BLE001 - any load failure is a miss, never a crash
@@ -538,6 +589,9 @@ def build_account_session(
         else:
             failure = index_cache.verify_store(vector_store, inspection.manifest)
         load_ms = int((perf_counter() - load_started) * 1000)
+
+    # --- warm start: reconstruct what was imported, touch nothing -------------------------------
+    if inspection.is_hit:
         if not failure:
             manifest = inspection.manifest
             register_answer_prompt(answer_prompt)
@@ -550,6 +604,21 @@ def build_account_session(
             retrieval_config = build_retrieval_config(
                 llm_config, k=k, hybrid_pool=hybrid_pool, workflow=workflow
             )
+            # A sync that found nothing new still *learned* where every conversation now stands, and
+            # this is the only place that can persist it: the tree did not move, so no other path
+            # runs. Without it the checkpoint never acquires a base, every later sync plans an
+            # unbounded window, and a no-op costs a full re-read of every conversation from the
+            # database — the cost this phase exists to remove. Sound here and only here: a hit means
+            # the tree *is* the indexed generation, so the timestamps describe the entry's own tree.
+            # Written last, like every checkpoint, and never when the sync recorded nothing.
+            if sync_outcome is not None and sync_outcome.advanced_timestamps:
+                _write_checkpoint(
+                    cache_dir=cache_dir,
+                    account_dir=account_dir,
+                    source_fingerprint=source_fp,
+                    base_fingerprint=manifest.source_fingerprint,
+                    advanced=sync_outcome.advanced_timestamps,
+                )
             return AccountSession(
                 brain=build_brain_from_vector_store(
                     vector_store,
@@ -571,8 +640,84 @@ def build_account_session(
                     load_ms=load_ms,
                     total_ms=int((perf_counter() - started) * 1000),
                 ),
+                sync=sync_outcome,
             )
         inspection = index_cache.Inspection(index_cache.INVALID, failure)
+
+    # --- incremental: the tree moved, the rules did not ------------------------------------------
+    incremental_reason = ""
+    if incremental_update and vector_store is not None and not failure:
+        classification = _classify_change(
+            account_dir, cache_dir, inspection, layout
+        )
+        incremental_reason = classification.reason
+        if classification.is_incremental:
+            result = incremental_index.update_account_index(
+                account_dir,
+                cache_dir=cache_dir,
+                stored_manifest=inspection.manifest,
+                vector_store=vector_store,
+                classification=classification,
+                session_config=config,
+                embedder=embedder,
+                shard_dir=shard_dir,
+                origin=f"account:{account_dir.name}",
+            )
+            if result.ok:
+                # The checkpoint is written **after** the index entry is in place: the state must
+                # never describe work that did not happen, and the plan's rule is that the source
+                # and the index are promoted before the checkpoint moves.
+                _write_checkpoint(
+                    cache_dir=cache_dir,
+                    account_dir=account_dir,
+                    source_fingerprint=source_fp,
+                    base_fingerprint=inspection.manifest.source_fingerprint,
+                    advanced=(sync_outcome.advanced_timestamps if sync_outcome else {}),
+                )
+                llm_config = build_llm_config(
+                    max_output_tokens=max_output_tokens, temperature=temperature
+                )
+                register_answer_prompt(answer_prompt)
+                retrieval_config = build_retrieval_config(
+                    llm_config, k=k, hybrid_pool=hybrid_pool, workflow=workflow
+                )
+                return AccountSession(
+                    brain=build_brain_from_vector_store(
+                        result.vector_store,
+                        llm_config,
+                        f"personal_recall_account_{account_dir.name}",
+                        embedder,
+                    ),
+                    retrieval_config=retrieval_config,
+                    # The coverage counts are the stored generation's with the delta's documented
+                    # changes applied (see `incremental_index._merged_aggregate`), and the
+                    # per-conversation rows are not re-derived — the same honesty a warm start owes.
+                    report=_incremental_report(result, layout),
+                    index=index_cache.IndexStatus(
+                        outcome=index_cache.INCREMENTAL,
+                        reason=classification.reason,
+                        chunk_count=result.chunk_count,
+                        vector_dimension=result.vector_dimension,
+                        cache_format_version=result.manifest.cache_format_version,
+                        schema_version=result.manifest.schema_version,
+                        cache_written=result.cache_written,
+                        embedded=bool(result.chunks_embedded),
+                        chunks_reused=result.chunks_reused,
+                        chunks_embedded=result.chunks_embedded,
+                        conversations_reimported=result.conversations_reimported,
+                        fingerprint_ms=fingerprint_ms,
+                        import_ms=result.import_ms,
+                        embed_ms=result.embed_ms,
+                        save_ms=result.save_ms,
+                        total_ms=int((perf_counter() - started) * 1000),
+                    ),
+                    sync=sync_outcome,
+                )
+            # Refused: say why in the status line and fall through to the full rebuild, which is
+            # the correct answer to every reason this can refuse for.
+            incremental_reason = result.reason
+    else:
+        incremental_reason = ""
 
     # --- cold start: import, embed, then persist ------------------------------------------------
     import_started = perf_counter()
@@ -599,6 +744,8 @@ def build_account_session(
     chunk_count = int(getattr(getattr(vector_store, "index", None), "ntotal", 0))
     vector_dimension = int(getattr(getattr(vector_store, "index", None), "d", 0))
     reason = inspection.reason
+    if incremental_reason:
+        reason = f"{reason}; not advanced incrementally ({incremental_reason})"
     cache_written = False
     save_ms = 0
     if source_fp is None:
@@ -627,6 +774,20 @@ def build_account_session(
             reason = f"{reason}; cache write failed ({type(exc).__name__})"
         else:
             cache_written = True
+            # The checkpoint follows the entry, never precedes it: this generation's tree is now
+            # exactly what the index was built from, so this is the base a future delta starts
+            # from. Written by this path as well as by the incremental one, because a checkpoint
+            # that only ever advanced incrementally would leave the first delta after a rebuild
+            # with no base at all.
+            _write_checkpoint(
+                cache_dir=cache_dir,
+                account_dir=account_dir,
+                source_fingerprint=source_fp,
+                base_fingerprint=inspection.manifest.source_fingerprint
+                if inspection.manifest is not None
+                else "",
+                advanced=(sync_outcome.advanced_timestamps if sync_outcome else {}),
+            )
         save_ms = int((perf_counter() - save_started) * 1000)
 
     return AccountSession(
@@ -648,7 +809,116 @@ def build_account_session(
             save_ms=save_ms,
             total_ms=int((perf_counter() - started) * 1000),
         ),
+        sync=sync_outcome,
     )
+
+
+# ---------------------------------------------------------------------------------------------
+# The incremental path's two helpers
+# ---------------------------------------------------------------------------------------------
+
+
+def _classify_change(
+    account_dir: Path,
+    cache_dir: Path,
+    inspection: index_cache.Inspection,
+    layout: Any,
+) -> incremental_index.Classification:
+    """Gather what a verdict needs and hand it to the one function that owns the verdict.
+
+    Everything here is a *fact*, never a decision: the checkpoint (or why it could not be read), the
+    inventory before and now, and the shards the account is missing. The rule that turns those facts
+    into "advance in place" or "rebuild" lives in :func:`incremental_index.classify_source_change`,
+    so it can be read — and tested — without an import, an embedder or a cache.
+    """
+    try:
+        state = sync_wechat.load_sync_state(cache_dir)
+        state_error = ""
+    except sync_wechat.SyncStateError as exc:
+        state, state_error = None, str(exc)
+
+    try:
+        current = index_cache.source_inventory_entries(
+            account_dir, exclude=(cache_dir.parent,)
+        )
+    except OSError:
+        current = None
+
+    detected = {str(shard) for shard in layout.shards_detected}
+    exported = {export.shard for export in layout.exports}
+    previously_exported = (
+        {entry.shard for entry in state.inventory if entry.shard} if state is not None else set()
+    )
+    # Only a shard that had *no* export and never had one is news: a narrowed export legitimately
+    # holds no file for a shard, and refusing every run of such a tree would be a refusal to work.
+    newly_missing = sorted(detected - exported - previously_exported)
+
+    return incremental_index.classify_source_change(
+        inspection=inspection,
+        previous_inventory=state.inventory if state is not None else None,
+        current_inventory=current,
+        state=state,
+        state_error=state_error,
+        missing_shards=newly_missing,
+    )
+
+
+def _write_checkpoint(
+    *,
+    cache_dir: Path,
+    account_dir: Path,
+    source_fingerprint: str | None,
+    base_fingerprint: str,
+    advanced: Any = None,
+) -> bool:
+    """Record the generation just completed, **last**. Never raises: a checkpoint is an accelerator.
+
+    ``base_fingerprint`` is the fingerprint of the tree the *previous* generation was built from — the
+    stored manifest's. The per-conversation timestamps are carried forward from the previous
+    checkpoint only when it describes that same tree: otherwise the timestamps belong to a history
+    this entry never indexed, and a stale "we are up to here" is worse than no answer at all.
+    """
+    if source_fingerprint is None:
+        return False
+    try:
+        previous = sync_wechat.load_sync_state(cache_dir)
+    except sync_wechat.SyncStateError:
+        previous = None
+    base = previous if previous is not None and previous.index_source_fingerprint == base_fingerprint else None
+    try:
+        inventory = index_cache.source_inventory_entries(
+            account_dir, exclude=(cache_dir.parent,)
+        )
+        state = sync_wechat.advanced_state(
+            previous=base,
+            inventory=inventory,
+            shards=sorted({entry.shard for entry in inventory if entry.shard}),
+            index_source_fingerprint=source_fingerprint,
+            advanced_timestamps=advanced or {},
+        )
+        sync_wechat.write_sync_state(cache_dir, state)
+    except (OSError, ValueError):
+        # The index is written and answerable; the checkpoint only makes the *next* delta cheaper.
+        # Losing it costs a rebuild of the diff's base, never an answer.
+        return False
+    return True
+
+
+def _incremental_report(result: Any, layout: Any) -> AccountImportReport:
+    """The coverage a warm start would report, with the delta's provenance attached.
+
+    The stored aggregate is the honest source for an account-wide count — this run re-imported a
+    handful of conversations, and reporting *their* counts as the account's would be a smaller
+    history than the one being served. The note says so rather than leaving the number to be read as
+    a fresh import.
+    """
+    report = index_cache.warm_report(result.manifest, layout)
+    report.notes = report.notes + (
+        f"{result.conversations_reimported} conversation(s) were re-imported for this delta, "
+        f"{result.chunks_reused} of {result.chunk_count} chunks reused their existing vectors; the "
+        "account-wide counts were carried forward from the stored generation",
+    )
+    return report
 
 
 def main() -> int:
@@ -688,6 +958,29 @@ def main() -> int:
         "--rebuild-index",
         action="store_true",
         help="account mode only: ignore a valid persistent index and rebuild it from the exports",
+    )
+    parser.add_argument(
+        "--incremental-index",
+        action="store_true",
+        help="account mode only: when the export tree has moved, re-import only the conversations "
+        "that moved and reuse every unchanged chunk's vector. Never applies to a structural change "
+        "(chunking, embedding model, projection or cache format), which still rebuilds, and never "
+        "to an explicit --rebuild-index",
+    )
+    parser.add_argument(
+        "--sync-wechat",
+        action="store_true",
+        help="account mode only: first pull whatever moved since the last sync out of the local "
+        "WeChat databases into the export tree, by asking weflow-cli for the delta window only. "
+        "This is the ONLY option that reads the local database; without it a run never touches it, "
+        "and the offline corpora and the acceptance runner never need a WeChat installation",
+    )
+    parser.add_argument(
+        "--multi-dir",
+        type=Path,
+        default=None,
+        help="the WeChat Msg/Multi directory the sync reads its shards from (default: --shard-dir). "
+        "Its databases are opened read-only, through a scratch config, never the real one",
     )
     parser.add_argument(
         "--source-format",
@@ -733,6 +1026,9 @@ def main() -> int:
                 shard_dir=args.shard_dir,
                 index_dir=args.index_dir,
                 rebuild_index=args.rebuild_index,
+                incremental_update=args.incremental_index,
+                sync=args.sync_wechat,
+                multi_dir=args.multi_dir,
                 k=args.k,
                 hybrid_pool=args.hybrid_pool,
                 workflow=args.workflow,
@@ -755,7 +1051,10 @@ def main() -> int:
             )
             return 2
         if not args.json:
-            # What the index cache did, in aggregate numbers only — never a message, a name or an id.
+            # What the sync and the index cache did, in aggregate numbers only — never a message, a
+            # name or an id.
+            for line in (session.sync.lines() if session.sync is not None else ()):
+                print(f"sync     : {line}")
             for line in session.index.lines():
                 print(f"index    : {line}")
             # One import, two consumers: the report below and the brain above describe the same
